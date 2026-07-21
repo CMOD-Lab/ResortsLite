@@ -20,7 +20,7 @@
     <artifactId>resortsLite</artifactId>
     <version>1.0.0</version>
     <name>ResortsLite</name>
-    <description>Resort booking demo — Java 21 / Spring Boot 3.2.x</description>
+    <description>Resort booking demo — Java 21 / Spring Boot 3.2.x / PostgreSQL 16</description>
 
     <properties>
         <!-- Java 21 target (fixes: Java Version Target Still Set to 1.8) -->
@@ -28,7 +28,8 @@
         <!-- Explicit versions for dependencies not managed by Spring Boot BOM -->
         <log4j2.version>2.23.1</log4j2.version>
         <commons-collections4.version>4.4</commons-collections4.version>
-        <mysql.version>8.2.0</mysql.version>
+        <!-- PostgreSQL JDBC driver version — replaces MySQL connector -->
+        <postgresql.version>42.7.3</postgresql.version>
     </properties>
 
     <dependencies>
@@ -72,18 +73,14 @@
         </dependency>
 
         <!-- ============================================================
-             Database: H2 in-memory (dev/test) + MySQL connector for production
-             mysql-connector-j is the renamed artifact (8.x+) for Java 21 support.
+             Database: PostgreSQL JDBC driver (replaces MySQL connector)
+             Migration: MySQL → PostgreSQL 16
+             postgresql 42.7.3 is the latest stable driver for PostgreSQL 16.
              ============================================================ -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <version>${mysql.version}</version>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
             <scope>runtime</scope>
         </dependency>
 

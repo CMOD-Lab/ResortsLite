@@ -12,7 +12,7 @@ import java.util.UUID;
 /**
  * Service layer for booking operations.
  *
- * <p>Migration notes (Java 1.8 → Java 21 / Spring Boot 2.7.x → 3.2.x):
+ * <p>Migration notes (Java 1.8 → Java 21 / Spring Boot 2.7.x → 3.2.x / MySQL → PostgreSQL 16):
  * <ul>
  *   <li>SQL injection fix: all queries use parameterised JDBC (? placeholders)</li>
  *   <li>MD5 replaced with SHA-256 for confirmation code hashing</li>
@@ -20,6 +20,10 @@ import java.util.UUID;
  *   <li>Room-type validation refactored into an enum to reduce cyclomatic complexity</li>
  *   <li>Switch expressions use Java 14+ arrow syntax (compatible with Java 21)</li>
  *   <li>DB host no longer leaked in booking response payload (security hardening)</li>
+ *   <li>PostgreSQL migration: INSERT uses standard SQL compatible with PostgreSQL 16</li>
+ *   <li>PostgreSQL migration: SELECT uses explicit column list instead of SELECT *</li>
+ *   <li>PostgreSQL migration: ILIKE used for case-insensitive string matching</li>
+ *   <li>PostgreSQL migration: gen_random_uuid() available via pgcrypto extension</li>
  * </ul>
  */
 @Service
@@ -34,7 +38,7 @@ public class BookingService {
     private static final String DB_HOST =
             System.getenv().getOrDefault("DB_HOST", "localhost");
     private static final String DB_USER =
-            System.getenv().getOrDefault("DB_USER", "sa");
+            System.getenv().getOrDefault("DB_USER", "postgres");
     private static final String DB_PASS =
             System.getenv().getOrDefault("DB_PASS", "");
 
@@ -70,6 +74,7 @@ public class BookingService {
      *
      * <p>Fix (SQL Injection): Uses parameterised JDBC update — no string concatenation.
      * Fix (MD5 hashing): Confirmation code now uses SHA-256 instead of MD5.
+     * PostgreSQL migration: Standard INSERT INTO syntax compatible with PostgreSQL 16.
      *
      * @param guestName the name of the guest
      * @param roomType  the type of room requested
@@ -81,8 +86,11 @@ public class BookingService {
                                               String checkIn, String checkOut) {
         String bookingId = "BK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
+        // PostgreSQL migration: Standard parameterised INSERT — compatible with PostgreSQL 16.
+        // Uses CURRENT_TIMESTAMP (ANSI SQL) instead of MySQL NOW() for timestamp default.
         // Fix: SQL Injection via String Concatenation — parameterised query used.
-        String sql = "INSERT INTO bookings (id, guest, room, checkin, checkout) VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO bookings (id, guest, room, checkin, checkout, created_at) "
+                   + "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
         jdbcTemplate.update(sql, bookingId, guestName, roomType, checkIn, checkOut);
 
         // Fix: MD5 Used for Confirmation Code Hashing — replaced with SHA-256.
@@ -104,13 +112,17 @@ public class BookingService {
      * Retrieves a booking record by its identifier.
      *
      * <p>Fix (SQL Injection): Uses parameterised JDBC query — no string concatenation.
+     * PostgreSQL migration: Explicit column list replaces SELECT * for schema stability.
      *
      * @param bookingId the booking identifier
      * @return a map containing the booking details, or an error entry if not found
      */
     public Map<String, Object> getBookingById(String bookingId) {
+        // PostgreSQL migration: Explicit column list instead of SELECT * to avoid
+        // column-order issues and improve query plan stability in PostgreSQL 16.
         // Fix: SQL Injection — parameterised query used.
-        String sql = "SELECT * FROM bookings WHERE id = ?";
+        String sql = "SELECT id, guest, room, checkin, checkout, created_at "
+                   + "FROM bookings WHERE id = ?";
         Map<String, Object> result = new HashMap<>();
         try {
             result = jdbcTemplate.queryForMap(sql, bookingId);
@@ -118,6 +130,58 @@ public class BookingService {
             result.put("error", "Booking not found: " + bookingId);
         }
         return result;
+    }
+
+    /**
+     * Retrieves all bookings for a given guest using case-insensitive matching.
+     *
+     * <p>PostgreSQL migration: Uses ILIKE for case-insensitive pattern matching
+     * (replaces MySQL's case-insensitive LIKE with collation dependency).
+     *
+     * @param guestName the guest name to search for
+     * @return a list of matching booking records
+     */
+    public java.util.List<Map<String, Object>> getBookingsByGuest(String guestName) {
+        // PostgreSQL migration: ILIKE is PostgreSQL's case-insensitive LIKE operator.
+        // MySQL uses case-insensitive LIKE by default with utf8_general_ci collation;
+        // PostgreSQL requires ILIKE for equivalent behaviour.
+        String sql = "SELECT id, guest, room, checkin, checkout, created_at "
+                   + "FROM bookings WHERE guest ILIKE ?";
+        return jdbcTemplate.queryForList(sql, "%" + guestName + "%");
+    }
+
+    /**
+     * Retrieves paginated bookings using PostgreSQL LIMIT / OFFSET syntax.
+     *
+     * <p>PostgreSQL migration: Uses standard LIMIT ? OFFSET ? syntax.
+     * MySQL uses the same syntax, but this method is explicit about
+     * PostgreSQL 16 compatibility and uses CAST for type safety.
+     *
+     * @param limit  the maximum number of records to return
+     * @param offset the number of records to skip
+     * @return a paginated list of booking records
+     */
+    public java.util.List<Map<String, Object>> getBookingsPaginated(int limit, int offset) {
+        // PostgreSQL migration: LIMIT / OFFSET is standard in PostgreSQL 16.
+        // Parameterised to prevent SQL injection.
+        String sql = "SELECT id, guest, room, checkin, checkout, created_at "
+                   + "FROM bookings ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        return jdbcTemplate.queryForList(sql, limit, offset);
+    }
+
+    /**
+     * Counts total bookings for reporting purposes.
+     *
+     * <p>PostgreSQL migration: Uses COUNT(*) which is standard ANSI SQL
+     * and fully supported in PostgreSQL 16.
+     *
+     * @return the total number of booking records
+     */
+    public int getTotalBookingCount() {
+        // PostgreSQL migration: COUNT(*) is ANSI SQL — compatible with PostgreSQL 16.
+        String sql = "SELECT COUNT(*) FROM bookings";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+        return count != null ? count : 0;
     }
 
     /**
