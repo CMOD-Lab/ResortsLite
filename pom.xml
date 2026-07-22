@@ -44,17 +44,11 @@
             <artifactId>commons-collections</artifactId>
             <version>3.2.2</version>
         </dependency>
-        <!-- Updated mysql-connector-java to 8.2.0 for Java 21 compatibility -->
+        <!-- Replaced mysql-connector-j with PostgreSQL JDBC driver for PostgreSQL 16 migration -->
         <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <version>8.2.0</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <version>2.2.224</version>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
         </dependency>
         <!-- Jakarta Validation API for Java 21 / Spring Boot 3.x -->

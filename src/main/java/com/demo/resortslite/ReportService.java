@@ -18,9 +18,8 @@ public class ReportService {
     // cloud object storage (e.g., S3 / Azure Blob) for container-based deployments.
     private static final String REPORT_BASE_PATH = "/var/legacy/reports/";
 
-    // NOTE: Backup path should be externalised to configuration; Windows-style paths
-    // will not work on Linux-based containers.
-    private static final String BACKUP_PATH = "C:\\ResortBackups\\nightly\\";
+    // Updated: Replaced Windows-style path with Linux-compatible path for PostgreSQL/container deployments
+    private static final String BACKUP_PATH = "/var/backups/resort/nightly/";
 
     // NOTE: Server port should be managed by the container orchestrator (ECS/EKS).
     // Externalise via server.port in application.properties or an environment variable.
