@@ -5,8 +5,12 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+// Replaced java.text.SimpleDateFormat and java.util.Date with java.time.LocalDateTime
+// and java.time.format.DateTimeFormatter (introduced in Java 8, preferred in Java 17+).
+// SimpleDateFormat is not thread-safe and is considered a legacy API.
+// DateTimeFormatter is immutable, thread-safe, and idiomatic in Java 17 codebases.
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -67,7 +71,12 @@ public class ReportService {
     }
 
     public Map<String, Object> getSystemInfo() { // doc-missing-001
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        // Replaced new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) with
+        // LocalDateTime.now().format(DateTimeFormatter.ofPattern(...)).
+        // java.util.Date and SimpleDateFormat are legacy APIs flagged for removal guidance
+        // in Java 17 migration. java.time.* is the standard replacement since Java 8.
+        String timestamp = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         Map<String, Object> info = new HashMap<>();
         info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
         info.put("backupPath", BACKUP_PATH);        // czr-java-001

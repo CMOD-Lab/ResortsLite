@@ -4,7 +4,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+// Replaced java.security.MessageDigest used with MD5 algorithm.
+// MD5 is a broken cryptographic hash (RFC 6151) and its use is flagged as a
+// security issue under JAVA8_TO_21_SECURITY_CHANGES rule. SHA-256 via
+// MessageDigest is the minimum acceptable replacement for non-password hashing.
+// For password hashing, bcrypt (spring-security-crypto) should be used instead.
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -39,9 +45,11 @@ public class BookingService {
                 + "', '" + checkIn + "', '" + checkOut + "')";                     // sql-inject-001
         jdbcTemplate.execute(sql);
 
-        // VIOLATION [Security Health / High]: MD5 is a broken hash algorithm (RFC 6151).
-        // Do not use MD5 for any security-related hashing. Use SHA-256 or bcrypt.
-        String confirmCode = md5Hash(bookingId + guestName); // sec-weak-hash-001
+        // Updated from MD5 to SHA-256 hashing.
+        // MD5 is cryptographically broken (collision attacks, RFC 6151) and is flagged by
+        // rule JAVA8_TO_21_SECURITY_CHANGES. SHA-256 is the minimum acceptable algorithm
+        // for non-password confirmation codes. Note: for password storage, use bcrypt.
+        String confirmCode = sha256Hash(bookingId + guestName); // sec-weak-hash-001 fixed
 
         Map<String, Object> booking = new HashMap<>();
         booking.put("bookingId", bookingId);
@@ -103,14 +111,27 @@ public class BookingService {
         return "Report generation triggered for: " + month + " via " + PAYMENT_API;
     }
 
-    private String md5Hash(String input) { // sec-weak-hash-001
+    /**
+     * Computes a SHA-256 hex digest of the given input string.
+     *
+     * Replaces the previous MD5-based implementation (md5Hash). MD5 is a broken
+     * cryptographic hash algorithm (RFC 6151, CVE history) and is flagged by rule
+     * JAVA8_TO_21_SECURITY_CHANGES as a security blocker for Java 17 upgrades.
+     * SHA-256 is the minimum recommended algorithm for confirmation-code generation.
+     *
+     * @param input the string to hash
+     * @return lowercase hex-encoded SHA-256 digest, or the raw input on failure
+     */
+    private String sha256Hash(String input) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
+            // "SHA-256" replaces "MD5" — same MessageDigest API, stronger algorithm.
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] hash = md.digest(input.getBytes());
             StringBuilder sb = new StringBuilder();
             for (byte b : hash) { sb.append(String.format("%02x", b)); }
             return sb.toString();
-        } catch (Exception e) {
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is mandated by the Java SE specification and will always be present.
             return input;
         }
     }

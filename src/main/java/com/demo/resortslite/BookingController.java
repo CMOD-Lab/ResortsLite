@@ -3,7 +3,12 @@ package com.demo.resortslite;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+// Updated from javax.servlet.http.HttpSession to jakarta.servlet.http.HttpSession.
+// In Java EE / Spring Boot 2.x the servlet API lived under the javax.servlet namespace.
+// Spring Boot 3.x (Jakarta EE 10) renamed the entire javax.* tree to jakarta.*.
+// Using the old javax.servlet import causes a compilation error on Java 17 + Boot 3.x:
+//   "package javax.servlet.http does not exist"
+import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 
