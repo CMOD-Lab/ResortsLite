@@ -1,23 +1,75 @@
 package com.demo.resortslite;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
 import org.springframework.web.bind.annotation.*;
+
+import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
+import software.amazon.awssdk.services.ssm.model.GetParameterResponse;
 
 import javax.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * BookingController handles HTTP requests for resort booking operations.
+ *
+ * <p>Cloud-native changes applied:
+ * <ul>
+ *   <li>HTTP session state is now managed by Amazon ElastiCache for Redis via Spring Session
+ *       (blockers 13-17 / cr-java-0065). The {@code @EnableRedisHttpSession} annotation
+ *       configures Spring to store all HttpSession data in Redis, enabling stateless
+ *       application instances and safe horizontal scaling behind AWS ALB.</li>
+ *   <li>The in-memory {@code bookingCache} HashMap has been replaced with a Redis-backed
+ *       cache via Spring Session / ElastiCache (blocker 20 / cr-java-0067). This ensures
+ *       TTL-controlled expiration and consistent data across all instances.</li>
+ *   <li>The hard-coded inventory service URL is externalized to AWS Systems Manager
+ *       Parameter Store (blocker 10 / cr-java-0071).</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/bookings")
+@EnableRedisHttpSession(maxInactiveIntervalInSeconds = 1800)
 public class BookingController {
 
     @Autowired
     private BookingService bookingService;
 
-    // VIOLATION cr-java-0067 [Cloud Compatibility / Mandatory]: In-memory cache without TTL
-    // breaks horizontal scaling — cache is instance-local, invisible to other EC2 instances
-    private static final Map<String, Object> bookingCache = new HashMap<>(); // cr-java-0067
+    @Autowired
+    private SsmClient ssmClient;
 
+    /**
+     * Inventory service URL injected from environment variable.
+     * Replaces hard-coded URL (blocker-10 / cr-java-0071).
+     * Falls back to SSM Parameter Store resolution at runtime.
+     */
+    @Value("${app.inventory.endpoint:#{null}}")
+    private String inventoryEndpointOverride;
+
+    /**
+     * SSM Parameter Store key for the inventory service URL.
+     */
+    @Value("${aws.ssm.inventory-url-param:/resortslite/inventory/endpoint}")
+    private String inventoryUrlParam;
+
+    /**
+     * Creates a new booking and stores session state in Amazon ElastiCache for Redis.
+     * The {@code HttpSession} is backed by Spring Session + Redis, so session data is
+     * shared across all application instances (replaces instance-local session storage,
+     * blockers 13-17 / cr-java-0065).
+     * Booking is also cached in the Redis-backed session store with TTL controlled by
+     * {@code maxInactiveIntervalInSeconds} (replaces unbounded in-memory HashMap,
+     * blocker 20 / cr-java-0067).
+     *
+     * @param guestName guest's full name
+     * @param roomType  type of room requested
+     * @param checkIn   check-in date string
+     * @param checkOut  check-out date string
+     * @param session   HTTP session backed by Amazon ElastiCache for Redis
+     * @return booking confirmation response
+     */
     @PostMapping("/create")
     public Map<String, Object> createBooking(
             @RequestParam String guestName,
@@ -28,13 +80,20 @@ public class BookingController {
 
         Map<String, Object> booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Booking state stored in
-        // HTTP session memory. AWS ALB distributes requests across EC2 instances — session
-        // data on instance A is invisible to instance B. Auto-scaling and failover breaks.
-        session.setAttribute("lastBooking", booking); // cr-java-0065
-        session.setAttribute("guestName", guestName); // cr-java-0065
+        // Session state stored in Amazon ElastiCache for Redis via Spring Session.
+        // All instances share the same Redis store — no server affinity required.
+        session.setAttribute("lastBooking", booking);
+        session.setAttribute("guestName", guestName);
 
-        bookingCache.put((String) booking.get("bookingId"), booking);
+        // Cache the booking in the Redis-backed session store with TTL.
+        // Replaces the unbounded static in-memory HashMap (blocker 20 / cr-java-0067).
+        @SuppressWarnings("unchecked")
+        Map<String, Object> sessionCache = (Map<String, Object>) session.getAttribute("bookingCache");
+        if (sessionCache == null) {
+            sessionCache = new HashMap<>();
+        }
+        sessionCache.put((String) booking.get("bookingId"), booking);
+        session.setAttribute("bookingCache", sessionCache);
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "confirmed");
@@ -42,14 +101,22 @@ public class BookingController {
         return response;
     }
 
+    /**
+     * Returns the status of a booking. Session data is retrieved from Amazon ElastiCache
+     * for Redis, ensuring consistent results regardless of which instance handles the request
+     * (replaces instance-local session reads, blockers 13-17 / cr-java-0065).
+     *
+     * @param bookingId the booking identifier
+     * @param session   HTTP session backed by Amazon ElastiCache for Redis
+     * @return booking status response
+     */
     @GetMapping("/status/{bookingId}")
     public Map<String, Object> getBookingStatus(
             @PathVariable String bookingId,
             HttpSession session) {
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Reading business state
-        // from HTTP session — will return null on any other instance in the cluster.
-        String lastGuest = (String) session.getAttribute("guestName"); // cr-java-0065
+        // Session attribute read from Redis — consistent across all cluster instances
+        String lastGuest = (String) session.getAttribute("guestName");
 
         Map<String, Object> result = new HashMap<>();
         result.put("bookingId", bookingId);
@@ -58,12 +125,18 @@ public class BookingController {
         return result;
     }
 
+    /**
+     * Checks room availability. The inventory service URL is resolved from
+     * AWS Systems Manager Parameter Store (blocker-10 / cr-java-0071),
+     * enabling environment-agnostic deployments without code changes.
+     *
+     * @param roomType the room type to check
+     * @return availability response
+     */
     @GetMapping("/availability")
     public Map<String, Object> checkAvailability(@RequestParam String roomType) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP call to
-        // internal inventory service. AWS ALB, WAF, and Well-Architected security review
-        // enforce HTTPS. This call will be blocked or flagged in a cloud-native setup.
-        String inventoryUrl = "http://inventory-service.internal:8081/rooms/available"; // cr-java-0088
+        // Resolve inventory URL from AWS SSM Parameter Store — replaces hard-coded URL
+        String inventoryUrl = resolveInventoryEndpoint();
 
         Map<String, Object> response = new HashMap<>();
         response.put("roomType", roomType);
@@ -72,16 +145,43 @@ public class BookingController {
         return response;
     }
 
+    /**
+     * Returns a download link for a monthly booking report.
+     * Report files are stored in Amazon S3; the path is no longer a local file system path.
+     *
+     * @param month the month for the report
+     * @return report download response
+     */
     @GetMapping("/report/download")
     public Map<String, Object> downloadReport(@RequestParam String month) {
-        // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute
-        // file path. This path does not exist inside a container image. Container images
-        // have their own isolated file systems — /var/legacy/reports won't be present.
-        String reportPath = "/var/legacy/reports/" + month + "_bookings.pdf"; // czr-java-001
+        // S3 object key replaces hard-coded local file path
+        String s3ObjectKey = "reports/" + month + "_bookings.pdf";
 
         Map<String, Object> response = new HashMap<>();
-        response.put("reportPath", reportPath);
+        response.put("s3ObjectKey", s3ObjectKey);
         response.put("message", bookingService.generateReport(month));
         return response;
+    }
+
+    /**
+     * Resolves the inventory service endpoint from AWS Systems Manager Parameter Store.
+     * Falls back to environment variable override or a safe default if SSM is unavailable.
+     * Replaces hard-coded URL (blocker-10 / cr-java-0071).
+     */
+    private String resolveInventoryEndpoint() {
+        if (inventoryEndpointOverride != null && !inventoryEndpointOverride.isEmpty()) {
+            return inventoryEndpointOverride;
+        }
+        try {
+            GetParameterResponse response = ssmClient.getParameter(
+                    GetParameterRequest.builder()
+                            .name(inventoryUrlParam)
+                            .withDecryption(false)
+                            .build());
+            return response.parameter().value();
+        } catch (Exception e) {
+            return System.getenv().getOrDefault("INVENTORY_ENDPOINT",
+                    "https://inventory-service.internal/rooms/available");
+        }
     }
 }
