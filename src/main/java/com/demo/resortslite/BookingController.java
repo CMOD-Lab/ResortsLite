@@ -3,7 +3,14 @@ package com.demo.resortslite;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+// [JAVA8_TO_21_JAKARTA_EE_MIGRATION / JAVA8_TO_11_DEPRECATED_APIS]
+// Replaced: import javax.servlet.http.HttpSession;
+// With:     import jakarta.servlet.http.HttpSession;
+// Reason:   Spring Boot 3.x is built on Jakarta EE 10. The javax.servlet package was
+//           removed from the JDK module path and is no longer provided by Spring Boot 3.x.
+//           All javax.servlet.* imports must be migrated to jakarta.servlet.* equivalents.
+//           Failure to do so causes: "package javax.servlet does not exist" compilation error.
+import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 
