@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RoomType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">RoomType.java</span></div><h1>RoomType.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import java.util.Set;
+
+/**
+ * Centralised room-type constants and validation helper.
+ *
+ * &lt;p&gt;Extracted from {@link BookingService} to eliminate duplicated room-type validation
+ * logic that previously appeared in both {@code calculateRoomPrice} and
+ * {@code isRoomAvailable} (resolves dup-logic-001).
+ *
+ * &lt;p&gt;Adding a new room type requires a single change here; all callers automatically
+ * pick up the updated set.
+ */
+public final class RoomType {
+
+    /** All valid room type identifiers. */
+<span class="fc" id="L18">    public static final Set&lt;String&gt; VALID_TYPES = Set.of(</span>
+            &quot;STANDARD&quot;,
+            &quot;DELUXE&quot;,
+            &quot;SUITE&quot;,
+            &quot;VILLA&quot;
+    );
+
+    private RoomType() {
+        // Utility class — do not instantiate.
+    }
+
+    /**
+     * Returns {@code true} if {@code roomType} is a recognised room type.
+     *
+     * @param roomType the room type string to validate (case-sensitive)
+     * @return {@code true} if valid; {@code false} otherwise
+     */
+    public static boolean isValid(String roomType) {
+<span class="fc bfc" id="L36" title="All 4 branches covered.">        return roomType != null &amp;&amp; VALID_TYPES.contains(roomType);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
