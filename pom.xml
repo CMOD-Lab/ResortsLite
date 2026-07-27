@@ -58,9 +58,15 @@
             <version>3.2.2</version>
         </dependency>
 
+        <!-- [DB_MIGRATION_POSTGRESQL]: Replaced H2 in-memory database with PostgreSQL 16
+             JDBC driver. H2 is not suitable for production use and does not support
+             PostgreSQL-specific SQL syntax, functions, or data types.
+             PostgreSQL driver version 42.7.3 is the latest stable release compatible
+             with PostgreSQL 16 and Java 17. -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
         </dependency>
     </dependencies>
