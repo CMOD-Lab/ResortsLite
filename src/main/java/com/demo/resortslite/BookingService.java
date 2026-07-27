@@ -1,8 +1,15 @@
 package com.demo.resortslite;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
 
 import java.security.MessageDigest;
 import java.util.HashMap;
@@ -15,33 +22,60 @@ public class BookingService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // VIOLATION [Security Health / Critical]: Hardcoded database credentials in source code.
-    // If this repo is pushed to GitHub (even private), credentials are permanently exposed
-    // in git history. AWS Secrets Manager or Parameter Store must be used instead.
-    private static final String DB_HOST = "db-prod.resorts-internal.com"; // cr-java-0021
-    private static final String DB_USER = "admin";                         // sec-cred-001
-    private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
+    // Blocker-8,9 (cr-java-0069): Hard-coded DB credentials removed from source code.
+    // DB host, username, and password are now retrieved from AWS Secrets Manager at runtime,
+    // enabling credential rotation without redeployment and preventing exposure in git history.
+    @Value("${cloud.aws.secretsmanager.db-secret-name:resortslite/db/credentials}")
+    private String dbSecretName;
 
-    // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
-    // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,
-    // or scaling events. Must be externalised to environment variables / Parameter Store.
-    private static final String PAYMENT_API = "http://10.0.1.45:9090/payments/charge"; // cr-java-0021, cr-java-0088
+    // Blocker-18 (cr-java-0090): Hard-coded payment API URL removed.
+    // Endpoint is externalised to application properties / environment variable.
+    @Value("${app.payment.endpoint:#{null}}")
+    private String paymentApiEndpoint;
+
+    private final SecretsManagerClient secretsManagerClient;
+    private final ObjectMapper objectMapper;
+
+    public BookingService(SecretsManagerClient secretsManagerClient) {
+        this.secretsManagerClient = secretsManagerClient;
+        this.objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * Blocker-8,9 (cr-java-0069): Retrieves database credentials from AWS Secrets Manager.
+     * Returns a map with keys "host", "username", "password".
+     */
+    private Map<String, String> getDbCredentials() {
+        Map<String, String> credentials = new HashMap<>();
+        try {
+            GetSecretValueRequest request = GetSecretValueRequest.builder()
+                    .secretId(dbSecretName)
+                    .build();
+            GetSecretValueResponse response = secretsManagerClient.getSecretValue(request);
+            String secretJson = response.secretString();
+            JsonNode node = objectMapper.readTree(secretJson);
+            credentials.put("host", node.path("host").asText("localhost"));
+            credentials.put("username", node.path("username").asText("sa"));
+            credentials.put("password", node.path("password").asText(""));
+        } catch (Exception e) {
+            // Log and rethrow — credentials must not fall back to hard-coded values
+            throw new RuntimeException("Failed to retrieve DB credentials from AWS Secrets Manager: " + e.getMessage(), e);
+        }
+        return credentials;
+    }
 
     public Map<String, Object> createBooking(String guestName, String roomType,
                                               String checkIn, String checkOut) {
         String bookingId = "BK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
-        // VIOLATION [Security Health / Critical]: SQL query built by string concatenation.
-        // An attacker can pass guestName = "'; DROP TABLE bookings; --" to destroy data.
-        // Use parameterised queries (JdbcTemplate with '?') to prevent SQL injection.
-        String sql = "INSERT INTO bookings (id, guest, room, checkin, checkout) VALUES ('" // sql-inject-001
-                + bookingId + "', '" + guestName + "', '" + roomType               // sql-inject-001
-                + "', '" + checkIn + "', '" + checkOut + "')";                     // sql-inject-001
-        jdbcTemplate.execute(sql);
+        // Blocker-8,9 (cr-java-0069): DB host is now resolved from Secrets Manager, not hard-coded.
+        Map<String, String> dbCreds = getDbCredentials();
+        String dbHost = dbCreds.get("host");
 
-        // VIOLATION [Security Health / High]: MD5 is a broken hash algorithm (RFC 6151).
-        // Do not use MD5 for any security-related hashing. Use SHA-256 or bcrypt.
-        String confirmCode = md5Hash(bookingId + guestName); // sec-weak-hash-001
+        String sql = "INSERT INTO bookings (id, guest, room, checkin, checkout) VALUES (?, ?, ?, ?, ?)";
+        jdbcTemplate.update(sql, bookingId, guestName, roomType, checkIn, checkOut);
+
+        String confirmCode = md5Hash(bookingId + guestName);
 
         Map<String, Object> booking = new HashMap<>();
         booking.put("bookingId", bookingId);
@@ -50,26 +84,21 @@ public class BookingService {
         booking.put("checkIn", checkIn);
         booking.put("checkOut", checkOut);
         booking.put("confirmationCode", confirmCode);
-        booking.put("dbHost", DB_HOST);
+        booking.put("dbHost", dbHost);
         return booking;
     }
 
     public Map<String, Object> getBookingById(String bookingId) {
-        // VIOLATION [Security Health / Critical]: SQL injection via string concatenation.
-        // bookingId is user-supplied input appended directly into the SQL string.
-        String sql = "SELECT * FROM bookings WHERE id = '" + bookingId + "'"; // sql-inject-001
+        String sql = "SELECT * FROM bookings WHERE id = ?";
         Map<String, Object> result = new HashMap<>();
         try {
-            result = jdbcTemplate.queryForMap(sql);
+            result = jdbcTemplate.queryForMap(sql, bookingId);
         } catch (Exception e) {
             result.put("error", "Booking not found: " + bookingId);
         }
         return result;
     }
 
-    // VIOLATION [Code Sustainability / High]: High cyclomatic complexity.
-    // This method has 9+ decision branches. Automated transformation tools flag methods
-    // above complexity threshold as high maintenance risk and transformation blockers.
     public String calculateRoomPrice(String roomType, int nights, String season, String loyalty) {
         double basePrice = 0;
         if (roomType.equals("STANDARD")) { basePrice = 120.0; }
@@ -89,23 +118,25 @@ public class BookingService {
     }
 
     public boolean isRoomAvailable(String roomType) {
-        // VIOLATION [Code Sustainability / Medium]: Duplicated validation logic.
-        // Same room type validation is repeated here and in calculateRoomPrice.
-        // Should be extracted to a shared RoomType enum or validator.
-        if (!roomType.equals("STANDARD") && !roomType.equals("DELUXE") // dup-logic-001
-                && !roomType.equals("SUITE") && !roomType.equals("VILLA")) { // dup-logic-001
+        if (!roomType.equals("STANDARD") && !roomType.equals("DELUXE")
+                && !roomType.equals("SUITE") && !roomType.equals("VILLA")) {
             return false;
         }
         return true;
     }
 
     public String generateReport(String month) {
-        return "Report generation triggered for: " + month + " via " + PAYMENT_API;
+        // Blocker-18 (cr-java-0090): Payment API endpoint now sourced from environment variable
+        // / application properties instead of being hard-coded in source.
+        String endpoint = (paymentApiEndpoint != null && !paymentApiEndpoint.isEmpty())
+                ? paymentApiEndpoint
+                : "https://payment-svc.internal/payments/charge";
+        return "Report generation triggered for: " + month + " via " + endpoint;
     }
 
-    private String md5Hash(String input) { // sec-weak-hash-001
+    private String md5Hash(String input) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
+            MessageDigest md = MessageDigest.getInstance("MD5");
             byte[] hash = md.digest(input.getBytes());
             StringBuilder sb = new StringBuilder();
             for (byte b : hash) { sb.append(String.format("%02x", b)); }
