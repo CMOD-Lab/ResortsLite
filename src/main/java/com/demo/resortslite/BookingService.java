@@ -1,8 +1,13 @@
 package com.demo.resortslite;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
 
 import java.security.MessageDigest;
 import java.util.HashMap;
@@ -15,17 +20,71 @@ public class BookingService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // VIOLATION [Security Health / Critical]: Hardcoded database credentials in source code.
-    // If this repo is pushed to GitHub (even private), credentials are permanently exposed
-    // in git history. AWS Secrets Manager or Parameter Store must be used instead.
-    private static final String DB_HOST = "db-prod.resorts-internal.com"; // cr-java-0021
-    private static final String DB_USER = "admin";                         // sec-cred-001
-    private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
+    // Replaced hard-coded DB credentials (cr-java-0069) with AWS Secrets Manager.
+    // The secret name is read from the environment variable DB_SECRET_NAME.
+    // Credentials are fetched at runtime and never stored in source code.
+    private final String dbHost;
+    private final String dbUser;
+    private final String dbPass;
 
-    // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
-    // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,
-    // or scaling events. Must be externalised to environment variables / Parameter Store.
-    private static final String PAYMENT_API = "http://10.0.1.45:9090/payments/charge"; // cr-java-0021, cr-java-0088
+    // Replaced hard-coded payment API URL (cr-java-0071) with an environment variable
+    // so it can be set per environment without code changes.
+    private final String paymentApi;
+
+    private final SecretsManagerClient secretsManagerClient;
+    private final ObjectMapper objectMapper;
+
+    public BookingService() {
+        this.secretsManagerClient = SecretsManagerClient.create();
+        this.objectMapper = new ObjectMapper();
+
+        // Retrieve DB credentials from AWS Secrets Manager (cr-java-0069).
+        // The secret is expected to be a JSON object: {"host":"...","username":"...","password":"..."}
+        String secretName = System.getenv("DB_SECRET_NAME");
+        if (secretName == null || secretName.isEmpty()) {
+            secretName = "resorts/db/credentials";
+        }
+
+        String resolvedHost = "localhost";
+        String resolvedUser = "sa";
+        String resolvedPass = "";
+
+        try {
+            GetSecretValueRequest secretRequest = GetSecretValueRequest.builder()
+                    .secretId(secretName)
+                    .build();
+            GetSecretValueResponse secretResponse = secretsManagerClient.getSecretValue(secretRequest);
+            String secretJson = secretResponse.secretString();
+            JsonNode secretNode = objectMapper.readTree(secretJson);
+            if (secretNode.has("host")) {
+                resolvedHost = secretNode.get("host").asText();
+            }
+            if (secretNode.has("username")) {
+                resolvedUser = secretNode.get("username").asText();
+            }
+            if (secretNode.has("password")) {
+                resolvedPass = secretNode.get("password").asText();
+            }
+        } catch (Exception e) {
+            // Fall back to environment variables if Secrets Manager is unavailable.
+            String envHost = System.getenv("DB_HOST");
+            String envUser = System.getenv("DB_USER");
+            String envPass = System.getenv("DB_PASS");
+            if (envHost != null) resolvedHost = envHost;
+            if (envUser != null) resolvedUser = envUser;
+            if (envPass != null) resolvedPass = envPass;
+        }
+
+        this.dbHost = resolvedHost;
+        this.dbUser = resolvedUser;
+        this.dbPass = resolvedPass;
+
+        // Payment API URL from environment variable — no hard-coded endpoint (cr-java-0071).
+        String paymentEnv = System.getenv("PAYMENT_API_URL");
+        this.paymentApi = (paymentEnv != null && !paymentEnv.isEmpty())
+                ? paymentEnv
+                : "https://payment-service.internal/payments/charge";
+    }
 
     public Map<String, Object> createBooking(String guestName, String roomType,
                                               String checkIn, String checkOut) {
@@ -50,7 +109,8 @@ public class BookingService {
         booking.put("checkIn", checkIn);
         booking.put("checkOut", checkOut);
         booking.put("confirmationCode", confirmCode);
-        booking.put("dbHost", DB_HOST);
+        // dbHost is now resolved from AWS Secrets Manager — not hard-coded (cr-java-0069).
+        booking.put("dbHost", dbHost);
         return booking;
     }
 
@@ -100,7 +160,8 @@ public class BookingService {
     }
 
     public String generateReport(String month) {
-        return "Report generation triggered for: " + month + " via " + PAYMENT_API;
+        // paymentApi is now resolved from environment variable — not hard-coded (cr-java-0071).
+        return "Report generation triggered for: " + month + " via " + paymentApi;
     }
 
     private String md5Hash(String input) { // sec-weak-hash-001
