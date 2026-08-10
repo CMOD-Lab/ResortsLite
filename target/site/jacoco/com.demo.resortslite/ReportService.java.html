@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">ReportService.java</span></div><h1>ReportService.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+<span class="fc" id="L15">public class ReportService {</span>
+
+    /**
+     * Base path for report files — externalised to an environment variable so that
+     * container deployments can mount the correct volume path without code changes.
+     * Defaults to {@code /tmp/reports} which is writable inside any container image.
+     * (Fixes: czr-java-001)
+     */
+    @Value(&quot;${app.report.base-path:${java.io.tmpdir}/reports}&quot;)
+    private String reportBasePath;
+
+    /**
+     * Base URL for the report download service — externalised to an environment
+     * variable and defaults to HTTPS to comply with cloud security standards.
+     * (Fixes: cr-java-0088, czr-java-001)
+     */
+    @Value(&quot;${app.report.download-base-url:https://reports.resorts-internal.com/download}&quot;)
+    private String reportDownloadBaseUrl;
+
+    /**
+     * Generates a monthly booking report CSV file.
+     *
+     * &lt;p&gt;The output directory is determined by {@code app.report.base-path} so that
+     * the path can be configured per environment without modifying source code.
+     * (Fixes: czr-java-001)
+     *
+     * @param month the month for the report (e.g. &quot;03&quot;)
+     * @param year  the year for the report (e.g. &quot;2024&quot;)
+     * @return map containing generation status and output path
+     */
+    public Map&lt;String, Object&gt; generateMonthlyReport(String month, String year) {
+<span class="fc" id="L46">        String fileName = &quot;resort_report_&quot; + month + &quot;_&quot; + year + &quot;.csv&quot;;</span>
+<span class="fc" id="L47">        String fullPath = reportBasePath + File.separator + fileName;</span>
+
+<span class="fc" id="L49">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+
+        try {
+<span class="fc" id="L52">            File reportDir = new File(reportBasePath);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (!reportDir.exists()) {</span>
+<span class="fc" id="L54">                reportDir.mkdirs();</span>
+            }
+
+<span class="fc" id="L57">            try (FileWriter writer = new FileWriter(fullPath)) {</span>
+<span class="fc" id="L58">                writer.write(&quot;BookingID,GuestName,RoomType,CheckIn,CheckOut,Amount\n&quot;);</span>
+<span class="fc" id="L59">                writer.write(&quot;BK-001,John Smith,SUITE,2024-03-01,2024-03-05,1750.00\n&quot;);</span>
+<span class="fc" id="L60">                writer.write(&quot;BK-002,Jane Doe,DELUXE,2024-03-03,2024-03-07,960.00\n&quot;);</span>
+            }
+
+<span class="fc" id="L63">            result.put(&quot;status&quot;, &quot;generated&quot;);</span>
+<span class="fc" id="L64">            result.put(&quot;path&quot;, fullPath);</span>
+
+<span class="fc" id="L66">        } catch (IOException e) {</span>
+<span class="fc" id="L67">            result.put(&quot;status&quot;, &quot;error&quot;);</span>
+<span class="fc" id="L68">            result.put(&quot;message&quot;, e.getMessage());</span>
+<span class="fc" id="L69">        }</span>
+
+<span class="fc" id="L71">        return result;</span>
+    }
+
+    /**
+     * Builds the HTTPS download URL for a named report file.
+     *
+     * &lt;p&gt;The base URL is externalised via {@code app.report.download-base-url} and
+     * defaults to an HTTPS endpoint, satisfying cloud security requirements.
+     * (Fixes: cr-java-0088)
+     *
+     * @param reportName the file name of the report
+     * @return fully qualified HTTPS download URL
+     */
+    public String buildReportDownloadUrl(String reportName) {
+<span class="fc" id="L85">        return reportDownloadBaseUrl + &quot;/&quot; + reportName;</span>
+    }
+
+    /**
+     * Returns basic system/runtime information for diagnostics.
+     *
+     * &lt;p&gt;Paths and port are read from injected configuration values rather than
+     * hardcoded constants, ensuring portability across environments.
+     * (Fixes: czr-java-001, czr-port-001)
+     *
+     * @return map of diagnostic key-value pairs
+     */
+    public Map&lt;String, Object&gt; getSystemInfo() {
+<span class="fc" id="L98">        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss&quot;));</span>
+<span class="fc" id="L99">        Map&lt;String, Object&gt; info = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L100">        info.put(&quot;reportPath&quot;, reportBasePath);</span>
+<span class="fc" id="L101">        info.put(&quot;generatedAt&quot;, timestamp);</span>
+<span class="fc" id="L102">        return info;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
