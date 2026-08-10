@@ -54,19 +54,18 @@
             <version>3.2.2</version>
         </dependency>
 
-        <!-- H2 in-memory database for development/testing -->
+        <!-- H2 in-memory database for development/testing only -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
 
-        <!-- MySQL Connector — updated to 8.2.0 for better Java 17 support
-             (JAVA8_TO_21_DEPENDENCY_UPDATES) -->
+        <!-- PostgreSQL JDBC Driver — replaces MySQL Connector for PostgreSQL 16 target database -->
         <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <version>8.2.0</version>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
         </dependency>
 
