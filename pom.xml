@@ -57,10 +57,19 @@
             <artifactId>commons-collections</artifactId>
             <version>3.2.2</version>
         </dependency>
+        <!-- Replaced H2 in-memory database with PostgreSQL 16 JDBC driver -->
+        <!-- DB_MIGRATION: SQL Server / H2 → PostgreSQL 16 compatibility -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
+        </dependency>
+        <!-- HikariCP connection pool — Spring Boot auto-configures via spring-boot-starter-jdbc -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>5.1.0</version>
         </dependency>
     </dependencies>
 

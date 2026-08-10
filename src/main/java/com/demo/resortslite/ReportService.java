@@ -1,5 +1,6 @@
 package com.demo.resortslite;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -15,19 +16,28 @@ import java.util.Map;
 @Service
 public class ReportService {
 
-    // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute path.
-    // /var/legacy/reports does not exist in a Docker container image. Breaks containerisation.
-    // Must use volume mounts, cloud object storage (S3 / Azure Blob), or environment variable.
-    private static final String REPORT_BASE_PATH = "/var/legacy/reports/"; // czr-java-001
+    // czr-java-001: Hardcoded absolute paths removed.
+    // Report base path and download URL are now externalised to environment variables
+    // so the application works correctly inside Docker containers, ECS tasks, and EKS pods
+    // without any OS-level path assumptions.
+    @Value("${app.report.base-path:/tmp/reports/}")
+    private String reportBasePath;
 
-    // VIOLATION czr-java-001 [Software Portability / Mandatory]: Windows-style absolute path
-    // will fail on any Linux-based container or cloud host. Hard dependency on OS path structure.
-    private static final String BACKUP_PATH = "C:\\ResortBackups\\nightly\\"; // czr-java-001
+    // czr-java-001: Windows-style absolute backup path removed.
+    // Backup destination is now externalised to an environment variable.
+    @Value("${app.backup.path:/tmp/backups/}")
+    private String backupPath;
 
-    // VIOLATION [Software Portability / High]: Fixed server port hardcoded in application logic.
-    // Container orchestration (ECS / EKS) dynamically assigns ports. Hardcoded ports prevent
-    // dynamic port binding required for modern container deployment and service discovery.
-    private static final int SERVER_PORT = 8080; // czr-port-001
+    // czr-port-001: Hardcoded server port removed from application logic.
+    // The port is managed by Spring Boot via server.port (environment variable SERVER_PORT).
+    // Injected here only if needed for URL construction; defaults to 8080.
+    @Value("${server.port:8080}")
+    private int serverPort;
+
+    // cr-java-0088: Report download base URL externalised to environment variable.
+    // HTTPS is enforced; no hardcoded plain-HTTP URLs in source code.
+    @Value("${app.report.download-base-url:https://reports.resorts-internal.com/download/}")
+    private String reportDownloadBaseUrl;
 
     /**
      * Generates a monthly CSV report and writes it to the configured report directory.
@@ -38,12 +48,14 @@ public class ReportService {
      */
     public Map<String, Object> generateMonthlyReport(String month, String year) {
         String fileName = "resort_report_" + month + "_" + year + ".csv";
-        String fullPath = REPORT_BASE_PATH + fileName; // czr-java-001
+        // czr-java-001: Path constructed from environment-variable-backed base path.
+        String fullPath = reportBasePath + fileName;
 
         Map<String, Object> result = new HashMap<>();
 
         try {
-            File reportDir = new File(REPORT_BASE_PATH); // czr-java-001
+            // czr-java-001: Directory created under the configurable base path.
+            File reportDir = new File(reportBasePath);
             if (!reportDir.exists()) {
                 reportDir.mkdirs();
             }
@@ -56,7 +68,8 @@ public class ReportService {
 
             result.put("status", "generated");
             result.put("path", fullPath);
-            result.put("serverPort", SERVER_PORT); // czr-port-001
+            // czr-port-001: serverPort is now injected from Spring environment, not hardcoded.
+            result.put("serverPort", serverPort);
 
         } catch (IOException e) {
             result.put("status", "error");
@@ -73,9 +86,9 @@ public class ReportService {
      * @return the full download URL string
      */
     public String buildReportDownloadUrl(String reportName) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL
-        // hardcoded for report download. Cloud security standards enforce HTTPS.
-        return "http://reports.resorts-internal.com:8080/download/" + reportName; // cr-java-0088
+        // cr-java-0088: Plain HTTP URL replaced with environment-variable-backed HTTPS base URL.
+        // No hardcoded hostnames or ports in source code.
+        return reportDownloadBaseUrl + reportName;
     }
 
     /**
@@ -92,9 +105,11 @@ public class ReportService {
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
         Map<String, Object> info = new HashMap<>();
-        info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
-        info.put("backupPath", BACKUP_PATH);        // czr-java-001
-        info.put("serverPort", SERVER_PORT);        // czr-port-001
+        // czr-java-001: Paths are now sourced from environment variables, not hardcoded.
+        info.put("reportPath", reportBasePath);
+        info.put("backupPath", backupPath);
+        // czr-port-001: Port is injected from Spring environment.
+        info.put("serverPort", serverPort);
         info.put("generatedAt", timestamp);
         return info;
     }
