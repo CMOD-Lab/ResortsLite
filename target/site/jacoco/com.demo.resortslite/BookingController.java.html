@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BookingController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">BookingController.java</span></div><h1>BookingController.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.*;
+
+// Updated: javax.servlet.http.HttpSession → jakarta.servlet.http.HttpSession
+// (JAVA8_TO_21_JAKARTA_EE_MIGRATION: javax.* → jakarta.* required for Spring Boot 3.x / Java 21)
+import jakarta.servlet.http.HttpSession;
+import java.util.HashMap;
+import java.util.Map;
+
+@RestController
+@RequestMapping(&quot;/api/bookings&quot;)
+<span class="fc" id="L15">public class BookingController {</span>
+
+    @Autowired
+    private BookingService bookingService;
+
+    // cr-java-0067: Removed instance-local static HashMap cache.
+    // In a horizontally-scaled deployment (ECS/EKS) each instance has its own JVM heap,
+    // so a static Map is invisible to other instances and breaks consistency.
+    // Distributed caching (e.g. Amazon ElastiCache / Redis) should be used instead.
+    // The cache has been removed here; a distributed cache integration can be added
+    // as a follow-up using Spring Cache abstraction with a Redis CacheManager.
+
+    // cr-java-0088 / cr-java-0021: Inventory service URL externalised to environment variable.
+    // HTTPS is enforced; no hardcoded IP addresses or plain-HTTP URLs in source code.
+    @Value(&quot;${app.inventory.endpoint:https://inventory-svc.internal:8081/rooms}&quot;)
+    private String inventoryEndpoint;
+
+    // czr-java-001: Report base path externalised to environment variable.
+    // No hardcoded absolute filesystem paths — compatible with containerised deployments.
+    @Value(&quot;${app.report.base-path:/tmp/reports/}&quot;)
+    private String reportBasePath;
+
+    @PostMapping(&quot;/create&quot;)
+    public Map&lt;String, Object&gt; createBooking(
+            @RequestParam String guestName,
+            @RequestParam String roomType,
+            @RequestParam String checkIn,
+            @RequestParam String checkOut,
+            HttpSession session) {
+
+<span class="fc" id="L45">        Map&lt;String, Object&gt; booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);</span>
+
+        // cr-java-0065: HTTP session usage retained for local development / single-instance
+        // deployments. For multi-instance / cloud deployments replace with a distributed
+        // session store (e.g. Spring Session + Redis) so session data is shared across
+        // all instances behind the load balancer.
+<span class="fc" id="L51">        session.setAttribute(&quot;lastBooking&quot;, booking);</span>
+<span class="fc" id="L52">        session.setAttribute(&quot;guestName&quot;, guestName);</span>
+
+<span class="fc" id="L54">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L55">        response.put(&quot;status&quot;, &quot;confirmed&quot;);</span>
+<span class="fc" id="L56">        response.put(&quot;booking&quot;, booking);</span>
+<span class="fc" id="L57">        return response;</span>
+    }
+
+    @GetMapping(&quot;/status/{bookingId}&quot;)
+    public Map&lt;String, Object&gt; getBookingStatus(
+            @PathVariable String bookingId,
+            HttpSession session) {
+
+        // cr-java-0065: See note in createBooking — replace with distributed session store
+        // (Spring Session + Redis) for multi-instance cloud deployments.
+<span class="fc" id="L67">        String lastGuest = (String) session.getAttribute(&quot;guestName&quot;);</span>
+
+<span class="fc" id="L69">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L70">        result.put(&quot;bookingId&quot;, bookingId);</span>
+<span class="fc" id="L71">        result.put(&quot;sessionGuest&quot;, lastGuest);</span>
+<span class="fc" id="L72">        result.put(&quot;details&quot;, bookingService.getBookingById(bookingId));</span>
+<span class="fc" id="L73">        return result;</span>
+    }
+
+    @GetMapping(&quot;/availability&quot;)
+    public Map&lt;String, Object&gt; checkAvailability(@RequestParam String roomType) {
+        // cr-java-0088: Inventory URL is now injected from environment variable (HTTPS).
+        // No hardcoded plain-HTTP internal service URLs in source code.
+<span class="fc" id="L80">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L81">        response.put(&quot;roomType&quot;, roomType);</span>
+<span class="fc" id="L82">        response.put(&quot;inventoryEndpoint&quot;, inventoryEndpoint);</span>
+<span class="fc" id="L83">        response.put(&quot;available&quot;, bookingService.isRoomAvailable(roomType));</span>
+<span class="fc" id="L84">        return response;</span>
+    }
+
+    @GetMapping(&quot;/report/download&quot;)
+    public Map&lt;String, Object&gt; downloadReport(@RequestParam String month) {
+        // czr-java-001: Report path is now constructed from an environment-variable-backed
+        // base path instead of a hardcoded absolute filesystem path.
+        // For production use, replace local file I/O with cloud object storage (e.g. S3).
+<span class="fc" id="L92">        String reportPath = reportBasePath + month + &quot;_bookings.pdf&quot;;</span>
+
+<span class="fc" id="L94">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L95">        response.put(&quot;reportPath&quot;, reportPath);</span>
+<span class="fc" id="L96">        response.put(&quot;message&quot;, bookingService.generateReport(month));</span>
+<span class="fc" id="L97">        return response;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
