@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BookingController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">BookingController.java</span></div><h1>BookingController.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.*;
+
+import jakarta.servlet.http.HttpSession;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * BookingController — REST API for resort booking operations.
+ *
+ * &lt;p&gt;All external service endpoints are externalised to application properties.
+ * In-memory session state has been replaced with stateless response patterns
+ * suitable for horizontally scaled deployments (ECS/EKS/ALB).&lt;/p&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/bookings&quot;)
+<span class="fc" id="L20">public class BookingController {</span>
+
+    @Autowired
+    private BookingService bookingService;
+
+    /**
+     * Inventory service endpoint — externalised to application property.
+     * Defaults to HTTPS to comply with cloud security standards (cr-java-0088).
+     */
+    @Value(&quot;${app.inventory.endpoint:https://inventory-svc.internal:8081/rooms}&quot;)
+    private String inventoryEndpoint;
+
+    /**
+     * Report storage base path — externalised to application property (czr-java-001).
+     */
+    @Value(&quot;${app.report.base.path:/tmp/reports/}&quot;)
+    private String reportBasePath;
+
+    /**
+     * Creates a new booking and returns the booking details in the response body.
+     * Session state is no longer used — the booking data is returned directly
+     * to the caller, making this endpoint safe for stateless, load-balanced deployments.
+     *
+     * @param guestName Guest's full name
+     * @param roomType  Room category (STANDARD, DELUXE, SUITE, VILLA)
+     * @param checkIn   Check-in date
+     * @param checkOut  Check-out date
+     * @return Confirmation response containing booking details
+     */
+    @PostMapping(&quot;/create&quot;)
+    public Map&lt;String, Object&gt; createBooking(
+            @RequestParam String guestName,
+            @RequestParam String roomType,
+            @RequestParam String checkIn,
+            @RequestParam String checkOut) {
+
+<span class="fc" id="L56">        Map&lt;String, Object&gt; booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);</span>
+
+        // Fixed cr-java-0065: Removed HttpSession usage — booking state is returned in the
+        // response body instead of stored in server-side session memory.
+        // Fixed cr-java-0067: Removed static in-memory bookingCache — not safe for
+        // horizontally scaled deployments. Use a distributed cache (Redis/ElastiCache) if caching is needed.
+
+<span class="fc" id="L63">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L64">        response.put(&quot;status&quot;, &quot;confirmed&quot;);</span>
+<span class="fc" id="L65">        response.put(&quot;booking&quot;, booking);</span>
+<span class="fc" id="L66">        return response;</span>
+    }
+
+    /**
+     * Retrieves the status of an existing booking by its ID.
+     *
+     * @param bookingId The booking identifier
+     * @return Map containing booking details
+     */
+    @GetMapping(&quot;/status/{bookingId}&quot;)
+    public Map&lt;String, Object&gt; getBookingStatus(@PathVariable String bookingId) {
+        // Fixed cr-java-0065: Removed HttpSession dependency — endpoint is now fully stateless.
+<span class="fc" id="L78">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L79">        result.put(&quot;bookingId&quot;, bookingId);</span>
+<span class="fc" id="L80">        result.put(&quot;details&quot;, bookingService.getBookingById(bookingId));</span>
+<span class="fc" id="L81">        return result;</span>
+    }
+
+    /**
+     * Checks room availability for the requested room type.
+     * The inventory service URL is injected from application properties (HTTPS enforced).
+     *
+     * @param roomType Room category to check
+     * @return Availability response including the resolved inventory endpoint
+     */
+    @GetMapping(&quot;/availability&quot;)
+    public Map&lt;String, Object&gt; checkAvailability(@RequestParam String roomType) {
+        // Fixed cr-java-0088: inventoryEndpoint is injected from application property,
+        // defaulting to HTTPS — no hardcoded plain-HTTP URL in source code.
+<span class="fc" id="L95">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L96">        response.put(&quot;roomType&quot;, roomType);</span>
+<span class="fc" id="L97">        response.put(&quot;inventoryEndpoint&quot;, inventoryEndpoint);</span>
+<span class="fc" id="L98">        response.put(&quot;available&quot;, bookingService.isRoomAvailable(roomType));</span>
+<span class="fc" id="L99">        return response;</span>
+    }
+
+    /**
+     * Returns the download path for a monthly booking report.
+     * The report base path is injected from application properties (czr-java-001).
+     *
+     * @param month Month identifier for the report
+     * @return Map containing the resolved report path and generation message
+     */
+    @GetMapping(&quot;/report/download&quot;)
+    public Map&lt;String, Object&gt; downloadReport(@RequestParam String month) {
+        // Fixed czr-java-001: reportBasePath is injected from application property —
+        // no hardcoded absolute path in source code.
+<span class="fc" id="L113">        String reportPath = reportBasePath + month + &quot;_bookings.pdf&quot;;</span>
+
+<span class="fc" id="L115">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L116">        response.put(&quot;reportPath&quot;, reportPath);</span>
+<span class="fc" id="L117">        response.put(&quot;message&quot;, bookingService.generateReport(month));</span>
+<span class="fc" id="L118">        return response;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
