@@ -1,10 +1,10 @@
 package com.demo.resortslite;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 // Updated: javax.servlet migrated to jakarta.servlet (Spring Boot 3.x / Jakarta EE 10)
-import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,27 +15,38 @@ public class BookingController {
     @Autowired
     private BookingService bookingService;
 
-    // VIOLATION cr-java-0067 [Cloud Compatibility / Mandatory]: In-memory cache without TTL
-    // breaks horizontal scaling — cache is instance-local, invisible to other EC2 instances
-    private static final Map<String, Object> bookingCache = new HashMap<>(); // cr-java-0067
+    // Updated: Removed instance-local in-memory cache (HashMap).
+    // In-memory caches without TTL break horizontal scaling — cache is instance-local
+    // and invisible to other EC2/ECS instances. Use a distributed cache (e.g. Redis /
+    // ElastiCache) for shared state across instances.
+    // Fix for: cr-java-0067 [Cloud Compatibility / Mandatory]
+
+    // Updated: Inventory service endpoint externalised to environment variable.
+    // Plain HTTP replaced with HTTPS for cloud security compliance.
+    // Fix for: cr-java-0088 [Cloud Compatibility / Mandatory]
+    @Value("${app.inventory.endpoint:https://inventory-svc.internal:8081/rooms}")
+    private String inventoryEndpoint;
+
+    // Updated: Report base path externalised to environment variable.
+    // Hardcoded absolute paths do not exist inside container images.
+    // Fix for: czr-java-001 [Software Portability / Mandatory]
+    @Value("${app.report.base-path:/tmp/reports/}")
+    private String reportBasePath;
 
     @PostMapping("/create")
     public Map<String, Object> createBooking(
             @RequestParam String guestName,
             @RequestParam String roomType,
             @RequestParam String checkIn,
-            @RequestParam String checkOut,
-            HttpSession session) {
+            @RequestParam String checkOut) {
 
+        // Updated: Removed HTTP session state storage for booking data.
+        // AWS ALB distributes requests across EC2 instances — session data on instance A
+        // is invisible to instance B. Auto-scaling and failover breaks with session-local state.
+        // Booking state is now returned directly in the response; persistent state should be
+        // stored in the database and retrieved via bookingId.
+        // Fix for: cr-java-0065 [Cloud Compatibility / Mandatory]
         Map<String, Object> booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);
-
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Booking state stored in
-        // HTTP session memory. AWS ALB distributes requests across EC2 instances — session
-        // data on instance A is invisible to instance B. Auto-scaling and failover breaks.
-        session.setAttribute("lastBooking", booking); // cr-java-0065
-        session.setAttribute("guestName", guestName); // cr-java-0065
-
-        bookingCache.put((String) booking.get("bookingId"), booking);
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "confirmed");
@@ -44,41 +55,36 @@ public class BookingController {
     }
 
     @GetMapping("/status/{bookingId}")
-    public Map<String, Object> getBookingStatus(
-            @PathVariable String bookingId,
-            HttpSession session) {
+    public Map<String, Object> getBookingStatus(@PathVariable String bookingId) {
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Reading business state
-        // from HTTP session — will return null on any other instance in the cluster.
-        String lastGuest = (String) session.getAttribute("guestName"); // cr-java-0065
-
+        // Updated: Removed HTTP session read for guestName.
+        // Session-based state is not available across instances in a horizontally scaled cluster.
+        // Booking details are now fetched directly from the database by bookingId.
+        // Fix for: cr-java-0065 [Cloud Compatibility / Mandatory]
         Map<String, Object> result = new HashMap<>();
         result.put("bookingId", bookingId);
-        result.put("sessionGuest", lastGuest);
         result.put("details", bookingService.getBookingById(bookingId));
         return result;
     }
 
     @GetMapping("/availability")
     public Map<String, Object> checkAvailability(@RequestParam String roomType) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP call to
-        // internal inventory service. AWS ALB, WAF, and Well-Architected security review
-        // enforce HTTPS. This call will be blocked or flagged in a cloud-native setup.
-        String inventoryUrl = "http://inventory-service.internal:8081/rooms/available"; // cr-java-0088
-
+        // Updated: Inventory service URL now read from environment-variable-backed property.
+        // Plain HTTP replaced with HTTPS; hardcoded internal hostname removed.
+        // Fix for: cr-java-0088 [Cloud Compatibility / Mandatory]
         Map<String, Object> response = new HashMap<>();
         response.put("roomType", roomType);
-        response.put("inventoryEndpoint", inventoryUrl);
+        response.put("inventoryEndpoint", inventoryEndpoint);
         response.put("available", bookingService.isRoomAvailable(roomType));
         return response;
     }
 
     @GetMapping("/report/download")
     public Map<String, Object> downloadReport(@RequestParam String month) {
-        // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute
-        // file path. This path does not exist inside a container image. Container images
-        // have their own isolated file systems — /var/legacy/reports won't be present.
-        String reportPath = "/var/legacy/reports/" + month + "_bookings.pdf"; // czr-java-001
+        // Updated: Report path now constructed from environment-variable-backed property
+        // instead of a hardcoded absolute path that does not exist in container images.
+        // Fix for: czr-java-001 [Software Portability / Mandatory]
+        String reportPath = reportBasePath + month + "_bookings.pdf";
 
         Map<String, Object> response = new HashMap<>();
         response.put("reportPath", reportPath);

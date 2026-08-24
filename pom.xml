@@ -54,10 +54,12 @@
             <version>3.2.2</version>
         </dependency>
 
-        <!-- H2 in-memory database for development/testing -->
+        <!-- Updated: Replaced H2 in-memory database with PostgreSQL 16 JDBC driver.
+             H2 was used for development/testing only; PostgreSQL is the target production database. -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
         </dependency>
 
