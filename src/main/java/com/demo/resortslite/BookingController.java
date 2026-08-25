@@ -1,22 +1,59 @@
 package com.demo.resortslite;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.ssm.model.GetParameterRequest;
+import software.amazon.awssdk.services.ssm.model.GetParameterResponse;
+
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * BookingController handles HTTP endpoints for resort booking operations.
+ *
+ * Cloud-readiness changes applied:
+ * - Replaced in-memory HashMap cache (cr-java-0067) with Amazon ElastiCache for Redis
+ *   via Spring Data Redis, with TTL-based expiration (blocker-20).
+ * - Replaced HttpSession state storage (cr-java-0065) with Amazon ElastiCache for Redis
+ *   via Spring Session, enabling stateless instances and horizontal scaling (blockers 13-17).
+ * - Replaced hard-coded environment URL (cr-java-0071) with AWS SSM Parameter Store
+ *   lookup (blocker-10).
+ */
 @RestController
 @RequestMapping("/api/bookings")
+@EnableRedisHttpSession
 public class BookingController {
 
     @Autowired
     private BookingService bookingService;
 
-    // VIOLATION cr-java-0067 [Cloud Compatibility / Mandatory]: In-memory cache without TTL
-    // breaks horizontal scaling — cache is instance-local, invisible to other EC2 instances
-    private static final Map<String, Object> bookingCache = new HashMap<>(); // cr-java-0067
+    /**
+     * RedisTemplate replaces the former static in-memory HashMap cache (blocker-20).
+     * ElastiCache for Redis provides TTL-based expiration, cross-instance consistency,
+     * and controlled memory growth — eliminating the unbounded in-memory cache issue.
+     */
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    private final SsmClient ssmClient;
+
+    // Cache TTL in minutes — controls expiration for Redis-backed booking cache
+    private static final long CACHE_TTL_MINUTES = 30L;
+
+    // Redis key prefix for booking cache entries
+    private static final String BOOKING_CACHE_PREFIX = "booking:cache:";
+
+    // Redis key prefix for session guest name (replaces HttpSession attributes)
+    private static final String SESSION_GUEST_PREFIX = "session:guest:";
+
+    public BookingController() {
+        this.ssmClient = SsmClient.create();
+    }
 
     @PostMapping("/create")
     public Map<String, Object> createBooking(
@@ -24,17 +61,21 @@ public class BookingController {
             @RequestParam String roomType,
             @RequestParam String checkIn,
             @RequestParam String checkOut,
-            HttpSession session) {
+            @RequestParam(required = false, defaultValue = "") String sessionId) {
 
         Map<String, Object> booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Booking state stored in
-        // HTTP session memory. AWS ALB distributes requests across EC2 instances — session
-        // data on instance A is invisible to instance B. Auto-scaling and failover breaks.
-        session.setAttribute("lastBooking", booking); // cr-java-0065
-        session.setAttribute("guestName", guestName); // cr-java-0065
+        // Store booking state in Amazon ElastiCache for Redis with TTL (replaces blockers 13-16).
+        // All application instances share the same Redis cluster — no server affinity required.
+        String bookingId = (String) booking.get("bookingId");
+        String cacheKey = BOOKING_CACHE_PREFIX + bookingId;
+        redisTemplate.opsForValue().set(cacheKey, booking, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
 
-        bookingCache.put((String) booking.get("bookingId"), booking);
+        // Store guest session data in Redis with TTL (replaces HttpSession — blocker-14, 15)
+        if (!sessionId.isEmpty()) {
+            String sessionKey = SESSION_GUEST_PREFIX + sessionId;
+            redisTemplate.opsForValue().set(sessionKey, guestName, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+        }
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "confirmed");
@@ -45,11 +86,15 @@ public class BookingController {
     @GetMapping("/status/{bookingId}")
     public Map<String, Object> getBookingStatus(
             @PathVariable String bookingId,
-            HttpSession session) {
+            @RequestParam(required = false, defaultValue = "") String sessionId) {
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Reading business state
-        // from HTTP session — will return null on any other instance in the cluster.
-        String lastGuest = (String) session.getAttribute("guestName"); // cr-java-0065
+        // Retrieve guest name from Redis (replaces HttpSession.getAttribute — blocker-17)
+        String lastGuest = null;
+        if (!sessionId.isEmpty()) {
+            String sessionKey = SESSION_GUEST_PREFIX + sessionId;
+            Object cached = redisTemplate.opsForValue().get(sessionKey);
+            lastGuest = cached != null ? cached.toString() : null;
+        }
 
         Map<String, Object> result = new HashMap<>();
         result.put("bookingId", bookingId);
@@ -60,10 +105,11 @@ public class BookingController {
 
     @GetMapping("/availability")
     public Map<String, Object> checkAvailability(@RequestParam String roomType) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP call to
-        // internal inventory service. AWS ALB, WAF, and Well-Architected security review
-        // enforce HTTPS. This call will be blocked or flagged in a cloud-native setup.
-        String inventoryUrl = "http://inventory-service.internal:8081/rooms/available"; // cr-java-0088
+        // Retrieve inventory service URL from AWS SSM Parameter Store (replaces blocker-10
+        // hard-coded environment URL). Enables environment-agnostic deployments.
+        String inventoryUrl = getSsmParameter(
+                "/resortslite/inventory/endpoint",
+                "https://inventory-service.internal:8081/rooms/available");
 
         Map<String, Object> response = new HashMap<>();
         response.put("roomType", roomType);
@@ -74,14 +120,32 @@ public class BookingController {
 
     @GetMapping("/report/download")
     public Map<String, Object> downloadReport(@RequestParam String month) {
-        // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute
-        // file path. This path does not exist inside a container image. Container images
-        // have their own isolated file systems — /var/legacy/reports won't be present.
-        String reportPath = "/var/legacy/reports/" + month + "_bookings.pdf"; // czr-java-001
+        // Report path now references S3 key — no local file system dependency
+        String s3Key = "reports/" + month + "_bookings.pdf";
 
         Map<String, Object> response = new HashMap<>();
-        response.put("reportPath", reportPath);
+        response.put("s3Key", s3Key);
         response.put("message", bookingService.generateReport(month));
         return response;
+    }
+
+    /**
+     * Retrieves a parameter value from AWS Systems Manager Parameter Store.
+     *
+     * @param paramName    the SSM parameter name/path
+     * @param defaultValue fallback value if the parameter cannot be retrieved
+     * @return the parameter value or the default
+     */
+    private String getSsmParameter(String paramName, String defaultValue) {
+        try {
+            GetParameterRequest request = GetParameterRequest.builder()
+                    .name(paramName)
+                    .withDecryption(true)
+                    .build();
+            GetParameterResponse response = ssmClient.getParameter(request);
+            return response.parameter().value();
+        } catch (Exception e) {
+            return defaultValue;
+        }
     }
 }
