@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">ReportService.java</span></div><h1>ReportService.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Service responsible for generating and managing resort booking reports.
+ *
+ * &lt;p&gt;All file-system paths, server ports, and external URLs are resolved from
+ * environment variables so the application runs portably across local, container,
+ * and cloud environments without code changes.&lt;/p&gt;
+ */
+@Service
+<span class="fc" id="L21">public class ReportService {</span>
+
+    // -------------------------------------------------------------------------
+    // Externalised configuration — resolved from environment variables at startup.
+    // Hardcoded absolute paths (Linux and Windows) have been removed.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Base directory for generated report files.
+     * Resolved from {@code REPORT_BASE_PATH}; falls back to the JVM temp directory
+     * so the application starts without manual configuration in development.
+     */
+<span class="fc" id="L33">    private static final String REPORT_BASE_PATH = System.getenv().getOrDefault(</span>
+            &quot;REPORT_BASE_PATH&quot;,
+<span class="fc" id="L35">            System.getProperty(&quot;java.io.tmpdir&quot;) + &quot;/reports&quot;);</span>
+
+    /**
+     * Base directory for report backup files.
+     * Resolved from {@code BACKUP_PATH}; falls back to the JVM temp directory.
+     */
+<span class="fc" id="L41">    private static final String BACKUP_PATH = System.getenv().getOrDefault(</span>
+            &quot;BACKUP_PATH&quot;,
+<span class="fc" id="L43">            System.getProperty(&quot;java.io.tmpdir&quot;) + &quot;/backups&quot;);</span>
+
+    /**
+     * HTTP server port.
+     * Resolved from {@code SERVER_PORT} to support dynamic port assignment by
+     * container orchestrators (ECS / EKS).
+     */
+<span class="fc" id="L50">    private static final int SERVER_PORT = Integer.parseInt(</span>
+<span class="fc" id="L51">            System.getenv().getOrDefault(&quot;SERVER_PORT&quot;, &quot;8080&quot;));</span>
+
+    // -------------------------------------------------------------------------
+    // Public API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Generates a monthly booking report CSV file for the specified month and year.
+     *
+     * @param month the month (e.g., {@code &quot;03&quot;})
+     * @param year  the four-digit year (e.g., {@code &quot;2024&quot;})
+     * @return a map containing the generation status and output file path
+     */
+    public Map&lt;String, Object&gt; generateMonthlyReport(String month, String year) {
+<span class="fc" id="L65">        String fileName = &quot;resort_report_&quot; + month + &quot;_&quot; + year + &quot;.csv&quot;;</span>
+<span class="fc" id="L66">        String fullPath = REPORT_BASE_PATH + File.separator + fileName;</span>
+
+<span class="fc" id="L68">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+
+        try {
+<span class="fc" id="L71">            File reportDir = new File(REPORT_BASE_PATH);</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (!reportDir.exists()) {</span>
+<span class="nc" id="L73">                reportDir.mkdirs();</span>
+            }
+
+<span class="fc" id="L76">            try (FileWriter writer = new FileWriter(fullPath)) {</span>
+<span class="fc" id="L77">                writer.write(&quot;BookingID,GuestName,RoomType,CheckIn,CheckOut,Amount\n&quot;);</span>
+<span class="fc" id="L78">                writer.write(&quot;BK-001,John Smith,SUITE,2024-03-01,2024-03-05,1750.00\n&quot;);</span>
+<span class="fc" id="L79">                writer.write(&quot;BK-002,Jane Doe,DELUXE,2024-03-03,2024-03-07,960.00\n&quot;);</span>
+            }
+
+<span class="fc" id="L82">            result.put(&quot;status&quot;, &quot;generated&quot;);</span>
+<span class="fc" id="L83">            result.put(&quot;path&quot;, fullPath);</span>
+<span class="fc" id="L84">            result.put(&quot;serverPort&quot;, SERVER_PORT);</span>
+
+<span class="nc" id="L86">        } catch (IOException e) {</span>
+<span class="nc" id="L87">            result.put(&quot;status&quot;, &quot;error&quot;);</span>
+<span class="nc" id="L88">            result.put(&quot;message&quot;, e.getMessage());</span>
+<span class="fc" id="L89">        }</span>
+
+<span class="fc" id="L91">        return result;</span>
+    }
+
+    /**
+     * Builds the HTTPS download URL for a named report file.
+     *
+     * &lt;p&gt;The base URL is resolved from the {@code REPORT_DOWNLOAD_BASE_URL}
+     * environment variable so it can be configured per environment without code
+     * changes. Updated from plain HTTP to HTTPS to enforce transport-layer
+     * encryption.&lt;/p&gt;
+     *
+     * @param reportName the name of the report file
+     * @return the fully-qualified HTTPS download URL
+     */
+    public String buildReportDownloadUrl(String reportName) {
+        // Updated to HTTPS; base URL externalised to environment variable.
+<span class="fc" id="L107">        String baseUrl = System.getenv().getOrDefault(</span>
+                &quot;REPORT_DOWNLOAD_BASE_URL&quot;, &quot;https://reports.resorts-internal.com/download&quot;);
+<span class="fc" id="L109">        return baseUrl + &quot;/&quot; + reportName;</span>
+    }
+
+    /**
+     * Returns system information including configured paths, port, and current timestamp.
+     *
+     * &lt;p&gt;Uses {@link java.time.LocalDateTime} and {@link DateTimeFormatter} from the
+     * modern {@code java.time} API, replacing the legacy {@code java.util.Date} and
+     * {@code SimpleDateFormat} classes that were not thread-safe.&lt;/p&gt;
+     *
+     * @return a map of system information key-value pairs
+     */
+    public Map&lt;String, Object&gt; getSystemInfo() {
+        // java.time.LocalDateTime replaces legacy java.util.Date / SimpleDateFormat.
+        // DateTimeFormatter is immutable and thread-safe; SimpleDateFormat was not.
+<span class="fc" id="L124">        String timestamp = LocalDateTime.now()</span>
+<span class="fc" id="L125">                .format(DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss&quot;));</span>
+
+<span class="fc" id="L127">        Map&lt;String, Object&gt; info = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L128">        info.put(&quot;reportPath&quot;, REPORT_BASE_PATH);</span>
+<span class="fc" id="L129">        info.put(&quot;backupPath&quot;, BACKUP_PATH);</span>
+<span class="fc" id="L130">        info.put(&quot;serverPort&quot;, SERVER_PORT);</span>
+<span class="fc" id="L131">        info.put(&quot;generatedAt&quot;, timestamp);</span>
+<span class="fc" id="L132">        return info;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

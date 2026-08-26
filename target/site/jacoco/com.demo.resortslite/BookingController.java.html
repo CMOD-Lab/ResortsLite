@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BookingController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">BookingController.java</span></div><h1>BookingController.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+// jakarta.servlet replaces javax.servlet — required for Spring Boot 3.x / Jakarta EE 10
+import jakarta.servlet.http.HttpSession;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * REST controller exposing booking management endpoints for the ResortsLite application.
+ *
+ * &lt;p&gt;All internal service URLs are resolved from environment variables to support
+ * cloud-native deployment across multiple environments without code changes.&lt;/p&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/bookings&quot;)
+<span class="fc" id="L21">public class BookingController {</span>
+
+    @Autowired
+    private BookingService bookingService;
+
+    /**
+     * In-memory booking cache backed by a {@link ConcurrentHashMap}.
+     *
+     * &lt;p&gt;&lt;strong&gt;Note:&lt;/strong&gt; For production horizontal scaling, replace with a
+     * distributed cache such as Redis / AWS ElastiCache to share state across
+     * multiple application instances.&lt;/p&gt;
+     */
+<span class="fc" id="L33">    private static final Map&lt;String, Object&gt; bookingCache = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /**
+     * Creates a new booking for the specified guest and room details.
+     *
+     * @param guestName name of the guest
+     * @param roomType  room category (STANDARD, DELUXE, SUITE, VILLA)
+     * @param checkIn   check-in date string (ISO-8601 recommended)
+     * @param checkOut  check-out date string (ISO-8601 recommended)
+     * @param session   current HTTP session used to store last-booking context
+     * @return a map containing confirmation status and booking details
+     */
+    @PostMapping(&quot;/create&quot;)
+    public Map&lt;String, Object&gt; createBooking(
+            @RequestParam String guestName,
+            @RequestParam String roomType,
+            @RequestParam String checkIn,
+            @RequestParam String checkOut,
+            HttpSession session) {
+
+<span class="fc" id="L53">        Map&lt;String, Object&gt; booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);</span>
+
+        // NOTE: Session usage retained for compatibility; for cloud-native horizontal scaling
+        // consider externalising session state to a distributed store (e.g., Spring Session + Redis).
+<span class="fc" id="L57">        session.setAttribute(&quot;lastBooking&quot;, booking);</span>
+<span class="fc" id="L58">        session.setAttribute(&quot;guestName&quot;, guestName);</span>
+
+<span class="fc" id="L60">        bookingCache.put((String) booking.get(&quot;bookingId&quot;), booking);</span>
+
+<span class="fc" id="L62">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L63">        response.put(&quot;status&quot;, &quot;confirmed&quot;);</span>
+<span class="fc" id="L64">        response.put(&quot;booking&quot;, booking);</span>
+<span class="fc" id="L65">        return response;</span>
+    }
+
+    /**
+     * Retrieves the status and details of an existing booking.
+     *
+     * @param bookingId unique booking identifier
+     * @param session   current HTTP session used to retrieve last-guest context
+     * @return a map containing booking details and session guest name
+     */
+    @GetMapping(&quot;/status/{bookingId}&quot;)
+    public Map&lt;String, Object&gt; getBookingStatus(
+            @PathVariable String bookingId,
+            HttpSession session) {
+
+<span class="fc" id="L80">        String lastGuest = (String) session.getAttribute(&quot;guestName&quot;);</span>
+
+<span class="fc" id="L82">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L83">        result.put(&quot;bookingId&quot;, bookingId);</span>
+<span class="fc" id="L84">        result.put(&quot;sessionGuest&quot;, lastGuest);</span>
+<span class="fc" id="L85">        result.put(&quot;details&quot;, bookingService.getBookingById(bookingId));</span>
+<span class="fc" id="L86">        return result;</span>
+    }
+
+    /**
+     * Checks room availability for the requested room type.
+     *
+     * &lt;p&gt;The inventory service URL is resolved from the {@code INVENTORY_API_URL}
+     * environment variable; updated from plain HTTP to HTTPS.&lt;/p&gt;
+     *
+     * @param roomType room category to check
+     * @return a map containing availability status and inventory endpoint reference
+     */
+    @GetMapping(&quot;/availability&quot;)
+    public Map&lt;String, Object&gt; checkAvailability(@RequestParam String roomType) {
+        // Updated to HTTPS endpoint; externalise URL via environment variable / config server
+        // for cloud-native deployments.
+<span class="fc" id="L102">        String inventoryUrl = System.getenv().getOrDefault(</span>
+                &quot;INVENTORY_API_URL&quot;, &quot;https://inventory-service.internal:8081/rooms/available&quot;);
+
+<span class="fc" id="L105">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L106">        response.put(&quot;roomType&quot;, roomType);</span>
+<span class="fc" id="L107">        response.put(&quot;inventoryEndpoint&quot;, inventoryUrl);</span>
+<span class="fc" id="L108">        response.put(&quot;available&quot;, bookingService.isRoomAvailable(roomType));</span>
+<span class="fc" id="L109">        return response;</span>
+    }
+
+    /**
+     * Returns the download path for a monthly booking report.
+     *
+     * &lt;p&gt;The report base path is resolved from the {@code REPORT_BASE_PATH}
+     * environment variable, falling back to the JVM temp directory for portability.&lt;/p&gt;
+     *
+     * @param month the month identifier used to locate the report file
+     * @return a map containing the report path and generation status message
+     */
+    @GetMapping(&quot;/report/download&quot;)
+    public Map&lt;String, Object&gt; downloadReport(@RequestParam String month) {
+        // Hardcoded absolute path replaced with a configurable path via environment variable.
+        // Default falls back to the system temp directory for portability across environments.
+<span class="fc" id="L125">        String reportBase = System.getenv().getOrDefault(</span>
+                &quot;REPORT_BASE_PATH&quot;,
+<span class="fc" id="L127">                System.getProperty(&quot;java.io.tmpdir&quot;) + &quot;/reports&quot;);</span>
+<span class="fc" id="L128">        String reportPath = reportBase + &quot;/&quot; + month + &quot;_bookings.pdf&quot;;</span>
+
+<span class="fc" id="L130">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L131">        response.put(&quot;reportPath&quot;, reportPath);</span>
+<span class="fc" id="L132">        response.put(&quot;message&quot;, bookingService.generateReport(month));</span>
+<span class="fc" id="L133">        return response;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
