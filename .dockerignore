@@ -1,0 +1,60 @@
+# =============================================================================
+# .dockerignore – ResortsLite BookingComp
+# =============================================================================
+
+# Build output
+target/
+
+# Version control
+.git/
+.gitignore
+
+# Maven wrapper (NEVER used inside Docker – system mvn is used instead)
+mvnw
+mvnw.cmd
+.mvn/
+
+# Gradle wrapper (excluded for safety even though this is a Maven project)
+gradlew
+gradlew.bat
+gradle/wrapper/
+gradle/
+
+# IDE / editor artefacts
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+
+# Test reports
+**/surefire-reports/
+**/failsafe-reports/
+
+# Logs
+*.log
+logs/
+
+# Docker files (not needed inside the image)
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Scripts
+scripts/
+
+# Generated / temp
+*.tmp
+*.bak
+*.swp

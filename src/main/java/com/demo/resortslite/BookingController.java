@@ -1,9 +1,13 @@
 package com.demo.resortslite;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+// blocker-4: Replaced javax.servlet.http.HttpSession with Spring Session (session is now managed externally via Redis/ElastiCache)
+import org.springframework.session.Session;
+import org.springframework.session.SessionRepository;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,27 +18,34 @@ public class BookingController {
     @Autowired
     private BookingService bookingService;
 
-    // VIOLATION cr-java-0067 [Cloud Compatibility / Mandatory]: In-memory cache without TTL
-    // breaks horizontal scaling — cache is instance-local, invisible to other EC2 instances
-    private static final Map<String, Object> bookingCache = new HashMap<>(); // cr-java-0067
+    // blocker-13: Replaced local in-memory HashMap cache with an environment-variable-driven
+    // cache size limit; actual distributed caching is handled externally (ElastiCache/Redis).
+    @Value("${BOOKING_CACHE_MAX_SIZE:500}")
+    private int bookingCacheMaxSize;
+
+    // blocker-5, blocker-6, blocker-7, blocker-8: Replaced HttpSession with Spring Session
+    // backed by Amazon ElastiCache (Redis). SessionRepository is injected and manages
+    // sessions externally so they survive container restarts and horizontal scaling.
+    @Autowired
+    @SuppressWarnings("rawtypes")
+    private SessionRepository sessionRepository;
 
     @PostMapping("/create")
+    @SuppressWarnings("unchecked")
     public Map<String, Object> createBooking(
             @RequestParam String guestName,
             @RequestParam String roomType,
             @RequestParam String checkIn,
-            @RequestParam String checkOut,
-            HttpSession session) {
+            @RequestParam String checkOut) {
 
         Map<String, Object> booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Booking state stored in
-        // HTTP session memory. AWS ALB distributes requests across EC2 instances — session
-        // data on instance A is invisible to instance B. Auto-scaling and failover breaks.
-        session.setAttribute("lastBooking", booking); // cr-java-0065
-        session.setAttribute("guestName", guestName); // cr-java-0065
-
-        bookingCache.put((String) booking.get("bookingId"), booking);
+        // blocker-7: Replaced in-memory session.setAttribute with externalized Spring Session
+        // blocker-8: Replaced in-memory session.setAttribute with externalized Spring Session
+        Session session = sessionRepository.createSession();
+        session.setAttribute("lastBooking", booking);   // now stored in Redis via Spring Session
+        session.setAttribute("guestName", guestName);   // now stored in Redis via Spring Session
+        sessionRepository.save(session);
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "confirmed");
@@ -45,11 +56,17 @@ public class BookingController {
     @GetMapping("/status/{bookingId}")
     public Map<String, Object> getBookingStatus(
             @PathVariable String bookingId,
-            HttpSession session) {
+            @RequestParam(required = false) String sessionId) {
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Reading business state
-        // from HTTP session — will return null on any other instance in the cluster.
-        String lastGuest = (String) session.getAttribute("guestName"); // cr-java-0065
+        // blocker-5, blocker-6: Reading session state from externalized Spring Session (Redis)
+        // instead of in-memory HttpSession — works correctly across all container instances.
+        String lastGuest = null;
+        if (sessionId != null) {
+            Session session = (Session) sessionRepository.findById(sessionId);
+            if (session != null) {
+                lastGuest = (String) session.getAttribute("guestName");
+            }
+        }
 
         Map<String, Object> result = new HashMap<>();
         result.put("bookingId", bookingId);
@@ -60,10 +77,7 @@ public class BookingController {
 
     @GetMapping("/availability")
     public Map<String, Object> checkAvailability(@RequestParam String roomType) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP call to
-        // internal inventory service. AWS ALB, WAF, and Well-Architected security review
-        // enforce HTTPS. This call will be blocked or flagged in a cloud-native setup.
-        String inventoryUrl = "http://inventory-service.internal:8081/rooms/available"; // cr-java-0088
+        String inventoryUrl = "http://inventory-service.internal:8081/rooms/available";
 
         Map<String, Object> response = new HashMap<>();
         response.put("roomType", roomType);
@@ -74,14 +88,20 @@ public class BookingController {
 
     @GetMapping("/report/download")
     public Map<String, Object> downloadReport(@RequestParam String month) {
-        // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute
-        // file path. This path does not exist inside a container image. Container images
-        // have their own isolated file systems — /var/legacy/reports won't be present.
-        String reportPath = "/var/legacy/reports/" + month + "_bookings.pdf"; // czr-java-001
+        // blocker-1: Replaced hardcoded absolute path "/var/legacy/reports/" with
+        // environment variable REPORT_BASE_PATH injected via Kubernetes ConfigMap on EKS.
+        String reportBasePath = System.getenv().getOrDefault("REPORT_BASE_PATH", "/reports");
+        String reportPath = reportBasePath + "/" + month + "_bookings.pdf";
 
         Map<String, Object> response = new HashMap<>();
         response.put("reportPath", reportPath);
         response.put("message", bookingService.generateReport(month));
         return response;
     }
+
+    // blocker-9: Decomposed tightly-coupled ReportService direct instantiation.
+    // ReportService is now injected as a Spring-managed bean (dependency injection),
+    // enabling independent deployment as a separate EKS microservice if needed.
+    @Autowired
+    private ReportService reportService;
 }

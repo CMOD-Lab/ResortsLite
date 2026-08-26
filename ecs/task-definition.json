@@ -1,0 +1,47 @@
+{
+  "family": "bookingcomp-task",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::{{ACCOUNT_ID}}:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::{{ACCOUNT_ID}}:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "bookingcomp",
+      "image": "{{IMAGE_URI}}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 8081,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "SPRING_PROFILES_ACTIVE", "value": "docker" },
+        { "name": "SERVER_PORT",            "value": "8080" },
+        { "name": "MANAGEMENT_PORT",        "value": "8081" },
+        { "name": "JAVA_OPTS",              "value": "-Xms256m -Xmx512m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom" },
+        { "name": "TZ",                     "value": "UTC" },
+        { "name": "REDIS_HOST",             "value": "${REDIS_HOST}" },
+        { "name": "REDIS_PORT",             "value": "6379" },
+        { "name": "PAYMENT_API_URL",        "value": "${PAYMENT_API_URL}" },
+        { "name": "REPORT_BASE_PATH",       "value": "/reports" },
+        { "name": "BACKUP_PATH",            "value": "/backups/nightly" },
+        { "name": "BOOKING_CACHE_MAX_SIZE", "value": "500" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/bookingcomp",
+          "awslogs-region":        "{{AWS_REGION}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
