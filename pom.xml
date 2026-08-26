@@ -65,12 +65,16 @@
         </dependency>
 
         <!--
-            H2 in-memory database for development/testing
-            (version managed by Spring Boot parent BOM)
+            Updated: Replaced H2 in-memory database with PostgreSQL JDBC driver.
+            Reason: Target database is PostgreSQL 16. The H2 driver is only suitable
+            for development/testing and does not support production PostgreSQL features.
+            PostgreSQL JDBC driver 42.7.3 is the latest stable release compatible with
+            PostgreSQL 16 and Java 21.
         -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
         </dependency>
 
