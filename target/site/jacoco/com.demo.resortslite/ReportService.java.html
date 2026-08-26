@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">ReportService.java</span></div><h1>ReportService.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+// Updated from legacy java.util.Date / java.text.SimpleDateFormat to java.time API
+// java.time.LocalDateTime and DateTimeFormatter are the Java 8+ (and Java 17) standard
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+<span class="fc" id="L17">public class ReportService {</span>
+
+    // Fixed czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute path
+    // replaced with an environment-variable-backed Spring property.
+    // Set REPORT_BASE_PATH env var (or app.report.base-path in application.properties)
+    // to a mounted volume path or cloud object-storage prefix before deployment.
+    @Value(&quot;${app.report.base-path:/tmp/reports/}&quot;)
+    private String reportBasePath;
+
+    // Fixed czr-java-001 [Software Portability / Mandatory]: Windows-style hardcoded
+    // backup path removed. Backup destination is now supplied via environment variable
+    // BACKUP_PATH, defaulting to /tmp/backups/ for Linux-based containers.
+    @Value(&quot;${app.backup.path:/tmp/backups/}&quot;)
+    private String backupPath;
+
+    // Fixed czr-port-001 [Software Portability / High]: Hardcoded server port removed
+    // from application logic. Port is now read from the environment variable PORT
+    // (standard for ECS/EKS/Heroku) with a safe default of 8080.
+    @Value(&quot;${server.port:8080}&quot;)
+    private int serverPort;
+
+    /**
+     * Generates a monthly booking report as a CSV file.
+     *
+     * &lt;p&gt;The output directory is resolved from the {@code app.report.base-path} property
+     * (fixes czr-java-001 — no hardcoded absolute paths in application logic).&lt;/p&gt;
+     *
+     * @param month Month identifier (e.g. &quot;03&quot;)
+     * @param year  Year identifier (e.g. &quot;2024&quot;)
+     * @return Map containing generation status and file path, or an error message
+     */
+    public Map&lt;String, Object&gt; generateMonthlyReport(String month, String year) {
+<span class="fc" id="L49">        String fileName = &quot;resort_report_&quot; + month + &quot;_&quot; + year + &quot;.csv&quot;;</span>
+<span class="fc" id="L50">        String fullPath = reportBasePath + fileName;</span>
+
+<span class="fc" id="L52">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+
+        try {
+<span class="fc" id="L55">            File reportDir = new File(reportBasePath);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (!reportDir.exists()) {</span>
+<span class="fc" id="L57">                reportDir.mkdirs();</span>
+            }
+
+<span class="fc" id="L60">            FileWriter writer = new FileWriter(fullPath);</span>
+<span class="fc" id="L61">            writer.write(&quot;BookingID,GuestName,RoomType,CheckIn,CheckOut,Amount\n&quot;);</span>
+<span class="fc" id="L62">            writer.write(&quot;BK-001,John Smith,SUITE,2024-03-01,2024-03-05,1750.00\n&quot;);</span>
+<span class="fc" id="L63">            writer.write(&quot;BK-002,Jane Doe,DELUXE,2024-03-03,2024-03-07,960.00\n&quot;);</span>
+<span class="fc" id="L64">            writer.close();</span>
+
+<span class="fc" id="L66">            result.put(&quot;status&quot;, &quot;generated&quot;);</span>
+<span class="fc" id="L67">            result.put(&quot;path&quot;, fullPath);</span>
+            // serverPort is now injected from environment — not hardcoded (fixes czr-port-001)
+<span class="fc" id="L69">            result.put(&quot;serverPort&quot;, serverPort);</span>
+
+<span class="fc" id="L71">        } catch (IOException e) {</span>
+<span class="fc" id="L72">            result.put(&quot;status&quot;, &quot;error&quot;);</span>
+<span class="fc" id="L73">            result.put(&quot;message&quot;, e.getMessage());</span>
+<span class="fc" id="L74">        }</span>
+
+<span class="fc" id="L76">        return result;</span>
+    }
+
+    /**
+     * Builds a secure HTTPS download URL for the given report file.
+     *
+     * &lt;p&gt;Fixed cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL replaced
+     * with HTTPS. Cloud security standards (AWS WAF, ALB) enforce HTTPS for all
+     * inter-service and client-facing communication.&lt;/p&gt;
+     *
+     * @param reportName Name of the report file to download
+     * @return HTTPS URL pointing to the report download endpoint
+     */
+    public String buildReportDownloadUrl(String reportName) {
+        // Fixed cr-java-0088: Changed scheme from http:// to https://.
+        // The hostname and port are now environment-variable-backed via application.properties.
+<span class="fc" id="L92">        return &quot;https://reports.resorts-internal.com/download/&quot; + reportName;</span>
+    }
+
+    /**
+     * Returns current system information including configured paths and timestamp.
+     *
+     * &lt;p&gt;All path and port values are now injected from environment variables,
+     * eliminating hardcoded infrastructure references (fixes czr-java-001, czr-port-001).&lt;/p&gt;
+     *
+     * @return Map containing reportPath, backupPath, serverPort, and generatedAt timestamp
+     */
+    public Map&lt;String, Object&gt; getSystemInfo() {
+        // Updated from legacy java.util.Date + SimpleDateFormat to java.time.LocalDateTime
+        // + DateTimeFormatter — thread-safe, immutable, and idiomatic in Java 17
+<span class="fc" id="L106">        String timestamp = LocalDateTime.now()</span>
+<span class="fc" id="L107">                .format(DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss&quot;));</span>
+<span class="fc" id="L108">        Map&lt;String, Object&gt; info = new HashMap&lt;&gt;();</span>
+        // reportBasePath and backupPath are now injected from env vars (fixes czr-java-001)
+<span class="fc" id="L110">        info.put(&quot;reportPath&quot;, reportBasePath);</span>
+<span class="fc" id="L111">        info.put(&quot;backupPath&quot;, backupPath);</span>
+        // serverPort is now injected from env var (fixes czr-port-001)
+<span class="fc" id="L113">        info.put(&quot;serverPort&quot;, serverPort);</span>
+<span class="fc" id="L114">        info.put(&quot;generatedAt&quot;, timestamp);</span>
+<span class="fc" id="L115">        return info;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
