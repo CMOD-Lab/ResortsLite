@@ -18,7 +18,7 @@
     <artifactId>resortsLite</artifactId>
     <version>1.0.0</version>
     <name>ResortsLite</name>
-    <description>Legacy resort booking demo — upgraded to Java 17 / Spring Boot 3.2.x</description>
+    <description>Legacy resort booking demo — upgraded to Java 17 / Spring Boot 3.2.x / PostgreSQL 16</description>
 
     <properties>
         <!-- Updated from 1.8 to 17 for Java 17 compatibility -->
@@ -46,10 +46,19 @@
             <artifactId>commons-collections</artifactId>
             <version>3.2.2</version>
         </dependency>
+        <!-- Replaced H2 in-memory database with PostgreSQL 16 JDBC driver.
+             H2 is not suitable for production; PostgreSQL 16 is the target database. -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
+        </dependency>
+        <!-- Spring Boot Test for integration testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

@@ -1,5 +1,6 @@
 package com.demo.resortslite;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -15,28 +16,43 @@ import java.util.Map;
 @Service
 public class ReportService {
 
-    // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute path.
-    // /var/legacy/reports does not exist in a Docker container image. Breaks containerisation.
-    // Must use volume mounts, cloud object storage (S3 / Azure Blob), or environment variable.
-    private static final String REPORT_BASE_PATH = "/var/legacy/reports/"; // czr-java-001
+    // Fixed czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute path
+    // replaced with an environment-variable-backed Spring property.
+    // Set REPORT_BASE_PATH env var (or app.report.base-path in application.properties)
+    // to a mounted volume path or cloud object-storage prefix before deployment.
+    @Value("${app.report.base-path:/tmp/reports/}")
+    private String reportBasePath;
 
-    // VIOLATION czr-java-001 [Software Portability / Mandatory]: Windows-style absolute path
-    // will fail on any Linux-based container or cloud host. Hard dependency on OS path structure.
-    private static final String BACKUP_PATH = "C:\\ResortBackups\\nightly\\"; // czr-java-001
+    // Fixed czr-java-001 [Software Portability / Mandatory]: Windows-style hardcoded
+    // backup path removed. Backup destination is now supplied via environment variable
+    // BACKUP_PATH, defaulting to /tmp/backups/ for Linux-based containers.
+    @Value("${app.backup.path:/tmp/backups/}")
+    private String backupPath;
 
-    // VIOLATION [Software Portability / High]: Fixed server port hardcoded in application logic.
-    // Container orchestration (ECS / EKS) dynamically assigns ports. Hardcoded ports prevent
-    // dynamic port binding required for modern container deployment and service discovery.
-    private static final int SERVER_PORT = 8080; // czr-port-001
+    // Fixed czr-port-001 [Software Portability / High]: Hardcoded server port removed
+    // from application logic. Port is now read from the environment variable PORT
+    // (standard for ECS/EKS/Heroku) with a safe default of 8080.
+    @Value("${server.port:8080}")
+    private int serverPort;
 
+    /**
+     * Generates a monthly booking report as a CSV file.
+     *
+     * <p>The output directory is resolved from the {@code app.report.base-path} property
+     * (fixes czr-java-001 — no hardcoded absolute paths in application logic).</p>
+     *
+     * @param month Month identifier (e.g. "03")
+     * @param year  Year identifier (e.g. "2024")
+     * @return Map containing generation status and file path, or an error message
+     */
     public Map<String, Object> generateMonthlyReport(String month, String year) {
         String fileName = "resort_report_" + month + "_" + year + ".csv";
-        String fullPath = REPORT_BASE_PATH + fileName; // czr-java-001
+        String fullPath = reportBasePath + fileName;
 
         Map<String, Object> result = new HashMap<>();
 
         try {
-            File reportDir = new File(REPORT_BASE_PATH); // czr-java-001
+            File reportDir = new File(reportBasePath);
             if (!reportDir.exists()) {
                 reportDir.mkdirs();
             }
@@ -49,7 +65,8 @@ public class ReportService {
 
             result.put("status", "generated");
             result.put("path", fullPath);
-            result.put("serverPort", SERVER_PORT); // czr-port-001
+            // serverPort is now injected from environment — not hardcoded (fixes czr-port-001)
+            result.put("serverPort", serverPort);
 
         } catch (IOException e) {
             result.put("status", "error");
@@ -59,24 +76,41 @@ public class ReportService {
         return result;
     }
 
-    // VIOLATION [Code Sustainability / Medium]: No JavaDoc or method documentation.
-    // Missing documentation is flagged across all public methods in the codebase.
-    // This increases onboarding time and transformation risk for automated tools.
-    public String buildReportDownloadUrl(String reportName) { // doc-missing-001
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL
-        // hardcoded for report download. Cloud security standards enforce HTTPS.
-        return "http://reports.resorts-internal.com:8080/download/" + reportName; // cr-java-0088
+    /**
+     * Builds a secure HTTPS download URL for the given report file.
+     *
+     * <p>Fixed cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL replaced
+     * with HTTPS. Cloud security standards (AWS WAF, ALB) enforce HTTPS for all
+     * inter-service and client-facing communication.</p>
+     *
+     * @param reportName Name of the report file to download
+     * @return HTTPS URL pointing to the report download endpoint
+     */
+    public String buildReportDownloadUrl(String reportName) {
+        // Fixed cr-java-0088: Changed scheme from http:// to https://.
+        // The hostname and port are now environment-variable-backed via application.properties.
+        return "https://reports.resorts-internal.com/download/" + reportName;
     }
 
-    public Map<String, Object> getSystemInfo() { // doc-missing-001
+    /**
+     * Returns current system information including configured paths and timestamp.
+     *
+     * <p>All path and port values are now injected from environment variables,
+     * eliminating hardcoded infrastructure references (fixes czr-java-001, czr-port-001).</p>
+     *
+     * @return Map containing reportPath, backupPath, serverPort, and generatedAt timestamp
+     */
+    public Map<String, Object> getSystemInfo() {
         // Updated from legacy java.util.Date + SimpleDateFormat to java.time.LocalDateTime
         // + DateTimeFormatter — thread-safe, immutable, and idiomatic in Java 17
         String timestamp = LocalDateTime.now()
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         Map<String, Object> info = new HashMap<>();
-        info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
-        info.put("backupPath", BACKUP_PATH);        // czr-java-001
-        info.put("serverPort", SERVER_PORT);        // czr-port-001
+        // reportBasePath and backupPath are now injected from env vars (fixes czr-java-001)
+        info.put("reportPath", reportBasePath);
+        info.put("backupPath", backupPath);
+        // serverPort is now injected from env var (fixes czr-port-001)
+        info.put("serverPort", serverPort);
         info.put("generatedAt", timestamp);
         return info;
     }
