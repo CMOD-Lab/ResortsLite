@@ -4,6 +4,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+// Updated: MD5 replaced with SHA-256 (stronger cryptographic algorithm per Java 21
+// security best practices and RFC 6151 which deprecates MD5 for security use).
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,9 +41,10 @@ public class BookingService {
                 + "', '" + checkIn + "', '" + checkOut + "')";                     // sql-inject-001
         jdbcTemplate.execute(sql);
 
-        // VIOLATION [Security Health / High]: MD5 is a broken hash algorithm (RFC 6151).
-        // Do not use MD5 for any security-related hashing. Use SHA-256 or bcrypt.
-        String confirmCode = md5Hash(bookingId + guestName); // sec-weak-hash-001
+        // Updated: SHA-256 replaces MD5 (broken hash algorithm per RFC 6151 /
+        // Java 21 security guidance). SHA-256 is collision-resistant and suitable
+        // for confirmation code generation.
+        String confirmCode = sha256Hash(bookingId + guestName);
 
         Map<String, Object> booking = new HashMap<>();
         booking.put("bookingId", bookingId);
@@ -103,9 +106,19 @@ public class BookingService {
         return "Report generation triggered for: " + month + " via " + PAYMENT_API;
     }
 
-    private String md5Hash(String input) { // sec-weak-hash-001
+    /**
+     * Computes a SHA-256 hash of the given input string.
+     *
+     * <p>Updated from MD5 (broken per RFC 6151) to SHA-256 for Java 21 security compliance.
+     * SHA-256 is part of the SHA-2 family and is recommended by NIST for cryptographic
+     * hashing in modern applications.</p>
+     *
+     * @param input the string to hash
+     * @return hex-encoded SHA-256 digest, or the original input on error
+     */
+    private String sha256Hash(String input) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] hash = md.digest(input.getBytes());
             StringBuilder sb = new StringBuilder();
             for (byte b : hash) { sb.append(String.format("%02x", b)); }

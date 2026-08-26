@@ -5,52 +5,115 @@
          https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!--
+        Updated: spring-boot-starter-parent upgraded from 2.7.15 to 3.2.5
+        Reason: Spring Boot 2.7.x is incompatible with Java 21; Spring Boot 3.2.x
+        provides full Java 21 support and Jakarta EE 10 namespace (jakarta.*).
+    -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
+        <version>3.2.5</version>
+        <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
     <groupId>com.demo</groupId>
     <artifactId>resortsLite</artifactId>
     <version>1.0.0</version>
     <name>ResortsLite</name>
-    <description>Legacy resort booking demo — Java 8 / Spring Boot 2.7.x</description>
+    <description>Resort booking demo — Java 21 / Spring Boot 3.2.x</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <!-- Updated: java.version changed from 1.8 to 21 for Java 21 compatibility -->
+        <java.version>21</java.version>
     </properties>
 
     <dependencies>
+        <!-- Spring Boot Web Starter (version managed by parent BOM) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+
+        <!-- Spring Boot JDBC Starter (version managed by parent BOM) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
-        <!-- SECURITY VIOLATION: log4j 2.14.1 has critical CVE-2021-44228 (Log4Shell) -->
+
+        <!--
+            Updated: log4j-core upgraded from 2.14.1 to 2.23.1
+            Reason: CVE-2021-44228 (Log4Shell RCE) — critical remote code execution
+            vulnerability present in versions < 2.15.0. Version 2.23.1 is the latest
+            stable release with all known CVEs patched.
+        -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
+            <version>2.23.1</version>
         </dependency>
-        <!-- SECURITY VIOLATION: commons-collections 3.2.1 has CVE-2015-6420 (RCE) -->
+
+        <!--
+            Updated: commons-collections upgraded from 3.2.1 to 3.2.2
+            Reason: CVE-2015-6420 — remote code execution via Java deserialization.
+            Version 3.2.2 includes the serialization safeguards that mitigate this CVE.
+        -->
         <dependency>
             <groupId>commons-collections</groupId>
             <artifactId>commons-collections</artifactId>
-            <version>3.2.1</version>
+            <version>3.2.2</version>
         </dependency>
+
+        <!--
+            H2 in-memory database for development/testing
+            (version managed by Spring Boot parent BOM)
+        -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+
+        <!-- Spring Boot Test Starter — includes JUnit 5 (Jupiter) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!--
+                Updated: maven-compiler-plugin upgraded to 3.13.0
+                Reason: Older versions (< 3.8.x) do not support --release flag required
+                for Java 21. Version 3.13.0 is the latest stable release with full
+                Java 21 support and proper annotation processor configuration.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+
+            <!--
+                Added: maven-surefire-plugin explicitly configured for Java 21
+                Reason: Without explicit configuration the default surefire version
+                bundled with older Maven may fail on Java 21 due to module system
+                restrictions. Version 3.2.5 supports JUnit 5 (Jupiter) natively.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
+
+            <!-- Spring Boot Maven Plugin (version managed by parent BOM) -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

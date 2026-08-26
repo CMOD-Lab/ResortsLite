@@ -3,7 +3,11 @@ package com.demo.resortslite;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+// Updated: javax.servlet.http.HttpSession → jakarta.servlet.http.HttpSession
+// Reason: Spring Boot 3.x / Jakarta EE 10 replaced the javax.* namespace with
+// jakarta.*. Using the old javax.servlet import causes a compilation error on
+// Spring Boot 3.x + Java 21.
+import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 

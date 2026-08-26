@@ -5,8 +5,13 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+// Updated: java.util.Date + SimpleDateFormat replaced with java.time API
+// Reason: java.util.Date and SimpleDateFormat are not thread-safe and are
+// considered legacy since Java 8. Java 21 best practice is to use the
+// java.time package (JSR-310): LocalDateTime + DateTimeFormatter are
+// immutable, thread-safe, and have a cleaner API.
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,6 +32,13 @@ public class ReportService {
     // dynamic port binding required for modern container deployment and service discovery.
     private static final int SERVER_PORT = 8080; // czr-port-001
 
+    /**
+     * Generates a monthly booking report as a CSV file.
+     *
+     * @param month the month (e.g. "03")
+     * @param year  the year  (e.g. "2024")
+     * @return a map containing the generation status and output file path
+     */
     public Map<String, Object> generateMonthlyReport(String month, String year) {
         String fileName = "resort_report_" + month + "_" + year + ".csv";
         String fullPath = REPORT_BASE_PATH + fileName; // czr-java-001
@@ -57,17 +69,34 @@ public class ReportService {
         return result;
     }
 
-    // VIOLATION [Code Sustainability / Medium]: No JavaDoc or method documentation.
-    // Missing documentation is flagged across all public methods in the codebase.
-    // This increases onboarding time and transformation risk for automated tools.
+    /**
+     * Builds the download URL for a named report file.
+     *
+     * <p>VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL
+     * hardcoded for report download. Cloud security standards enforce HTTPS.</p>
+     *
+     * @param reportName the report file name
+     * @return the download URL string
+     */
     public String buildReportDownloadUrl(String reportName) { // doc-missing-001
         // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL
         // hardcoded for report download. Cloud security standards enforce HTTPS.
         return "http://reports.resorts-internal.com:8080/download/" + reportName; // cr-java-0088
     }
 
+    /**
+     * Returns system information including configured paths, port, and current timestamp.
+     *
+     * <p>Updated: java.util.Date + SimpleDateFormat replaced with java.time.LocalDateTime
+     * and DateTimeFormatter (thread-safe, Java 21 recommended date/time API).</p>
+     *
+     * @return a map of system information key-value pairs
+     */
     public Map<String, Object> getSystemInfo() { // doc-missing-001
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        // Updated: java.util.Date + SimpleDateFormat replaced with java.time.LocalDateTime
+        // and DateTimeFormatter (thread-safe, Java 21 recommended date/time API)
+        String timestamp = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         Map<String, Object> info = new HashMap<>();
         info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
         info.put("backupPath", BACKUP_PATH);        // czr-java-001
