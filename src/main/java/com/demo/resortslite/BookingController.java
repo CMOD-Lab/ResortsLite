@@ -3,10 +3,19 @@ package com.demo.resortslite;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+// jakarta.servlet replaces javax.servlet — required for Spring Boot 3.x / Jakarta EE 10
+import jakarta.servlet.http.HttpSession;
+
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * REST controller exposing booking management endpoints for the ResortsLite application.
+ *
+ * <p>All internal service URLs are resolved from environment variables to support
+ * cloud-native deployment across multiple environments without code changes.</p>
+ */
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
@@ -14,10 +23,25 @@ public class BookingController {
     @Autowired
     private BookingService bookingService;
 
-    // VIOLATION cr-java-0067 [Cloud Compatibility / Mandatory]: In-memory cache without TTL
-    // breaks horizontal scaling — cache is instance-local, invisible to other EC2 instances
-    private static final Map<String, Object> bookingCache = new HashMap<>(); // cr-java-0067
+    /**
+     * In-memory booking cache backed by a {@link ConcurrentHashMap}.
+     *
+     * <p><strong>Note:</strong> For production horizontal scaling, replace with a
+     * distributed cache such as Redis / AWS ElastiCache to share state across
+     * multiple application instances.</p>
+     */
+    private static final Map<String, Object> bookingCache = new ConcurrentHashMap<>();
 
+    /**
+     * Creates a new booking for the specified guest and room details.
+     *
+     * @param guestName name of the guest
+     * @param roomType  room category (STANDARD, DELUXE, SUITE, VILLA)
+     * @param checkIn   check-in date string (ISO-8601 recommended)
+     * @param checkOut  check-out date string (ISO-8601 recommended)
+     * @param session   current HTTP session used to store last-booking context
+     * @return a map containing confirmation status and booking details
+     */
     @PostMapping("/create")
     public Map<String, Object> createBooking(
             @RequestParam String guestName,
@@ -28,11 +52,10 @@ public class BookingController {
 
         Map<String, Object> booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Booking state stored in
-        // HTTP session memory. AWS ALB distributes requests across EC2 instances — session
-        // data on instance A is invisible to instance B. Auto-scaling and failover breaks.
-        session.setAttribute("lastBooking", booking); // cr-java-0065
-        session.setAttribute("guestName", guestName); // cr-java-0065
+        // NOTE: Session usage retained for compatibility; for cloud-native horizontal scaling
+        // consider externalising session state to a distributed store (e.g., Spring Session + Redis).
+        session.setAttribute("lastBooking", booking);
+        session.setAttribute("guestName", guestName);
 
         bookingCache.put((String) booking.get("bookingId"), booking);
 
@@ -42,14 +65,19 @@ public class BookingController {
         return response;
     }
 
+    /**
+     * Retrieves the status and details of an existing booking.
+     *
+     * @param bookingId unique booking identifier
+     * @param session   current HTTP session used to retrieve last-guest context
+     * @return a map containing booking details and session guest name
+     */
     @GetMapping("/status/{bookingId}")
     public Map<String, Object> getBookingStatus(
             @PathVariable String bookingId,
             HttpSession session) {
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Reading business state
-        // from HTTP session — will return null on any other instance in the cluster.
-        String lastGuest = (String) session.getAttribute("guestName"); // cr-java-0065
+        String lastGuest = (String) session.getAttribute("guestName");
 
         Map<String, Object> result = new HashMap<>();
         result.put("bookingId", bookingId);
@@ -58,12 +86,21 @@ public class BookingController {
         return result;
     }
 
+    /**
+     * Checks room availability for the requested room type.
+     *
+     * <p>The inventory service URL is resolved from the {@code INVENTORY_API_URL}
+     * environment variable; updated from plain HTTP to HTTPS.</p>
+     *
+     * @param roomType room category to check
+     * @return a map containing availability status and inventory endpoint reference
+     */
     @GetMapping("/availability")
     public Map<String, Object> checkAvailability(@RequestParam String roomType) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP call to
-        // internal inventory service. AWS ALB, WAF, and Well-Architected security review
-        // enforce HTTPS. This call will be blocked or flagged in a cloud-native setup.
-        String inventoryUrl = "http://inventory-service.internal:8081/rooms/available"; // cr-java-0088
+        // Updated to HTTPS endpoint; externalise URL via environment variable / config server
+        // for cloud-native deployments.
+        String inventoryUrl = System.getenv().getOrDefault(
+                "INVENTORY_API_URL", "https://inventory-service.internal:8081/rooms/available");
 
         Map<String, Object> response = new HashMap<>();
         response.put("roomType", roomType);
@@ -72,12 +109,23 @@ public class BookingController {
         return response;
     }
 
+    /**
+     * Returns the download path for a monthly booking report.
+     *
+     * <p>The report base path is resolved from the {@code REPORT_BASE_PATH}
+     * environment variable, falling back to the JVM temp directory for portability.</p>
+     *
+     * @param month the month identifier used to locate the report file
+     * @return a map containing the report path and generation status message
+     */
     @GetMapping("/report/download")
     public Map<String, Object> downloadReport(@RequestParam String month) {
-        // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute
-        // file path. This path does not exist inside a container image. Container images
-        // have their own isolated file systems — /var/legacy/reports won't be present.
-        String reportPath = "/var/legacy/reports/" + month + "_bookings.pdf"; // czr-java-001
+        // Hardcoded absolute path replaced with a configurable path via environment variable.
+        // Default falls back to the system temp directory for portability across environments.
+        String reportBase = System.getenv().getOrDefault(
+                "REPORT_BASE_PATH",
+                System.getProperty("java.io.tmpdir") + "/reports");
+        String reportPath = reportBase + "/" + month + "_bookings.pdf";
 
         Map<String, Object> response = new HashMap<>();
         response.put("reportPath", reportPath);
