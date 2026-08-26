@@ -1,0 +1,45 @@
+# Java / Maven build artifacts
+target/
+*.jar
+*.war
+*.ear
+
+# Git
+.git/
+.gitignore
+
+# Maven wrapper — NEVER copy into Docker image
+mvnw
+mvnw.cmd
+.mvn/
+
+# IDE / editor files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+
+# Test reports
+surefire-reports/
+
+# Logs
+*.log
+logs/
+
+# Scripts (not needed inside image)
+scripts/
+
+# Kubernetes manifests (not needed inside image)
+kubernetes/
