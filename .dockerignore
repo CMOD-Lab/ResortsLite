@@ -1,0 +1,60 @@
+# Java / Maven build artifacts
+target/
+*.jar
+*.war
+*.ear
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Maven wrapper – NEVER copy into Docker image
+mvnw
+mvnw.cmd
+.mvn/
+
+# Gradle wrapper – excluded for completeness
+gradlew
+gradlew.bat
+gradle/wrapper/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Test reports
+**/surefire-reports/
+**/failsafe-reports/
+
+# Logs
+logs/
+*.log
+
+# Local config overrides
+*.local
+.env
+.env.*
+
+# Docker artefacts (avoid recursive context)
+docker-compose*.yml
+Dockerfile*
+
+# Scripts (not needed inside image)
+scripts/
+
+# Generated ECS manifests
+ecs/

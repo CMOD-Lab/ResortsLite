@@ -1,0 +1,52 @@
+version: "3.9"
+
+# =============================================================================
+# docker-compose.yml – ResortsLite (BookingComp) – Application only
+# External services (Redis, DB, etc.) are provided separately.
+# =============================================================================
+
+services:
+  resortslite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: resortslite:latest
+    container_name: resortslite-app
+    ports:
+      - "8080:8080"
+    environment:
+      # JVM settings
+      JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom -Dfile.encoding=UTF-8 -Duser.timezone=UTC"
+      # Spring profile
+      SPRING_PROFILES_ACTIVE: docker
+      # Server
+      SERVER_PORT: "8080"
+      # Redis – override with actual ElastiCache endpoint in production
+      REDIS_HOST: ${REDIS_HOST:-localhost}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      # External service endpoints – override with real URLs in production
+      PAYMENT_API_URL: ${PAYMENT_API_URL:-http://payment-service:9090/payments/charge}
+      APP_PAYMENT_ENDPOINT: ${APP_PAYMENT_ENDPOINT:-http://payment-svc.internal:9090/charge}
+      APP_INVENTORY_ENDPOINT: ${APP_INVENTORY_ENDPOINT:-http://inventory-svc.internal:8081/rooms}
+      APP_NOTIFICATION_ENDPOINT: ${APP_NOTIFICATION_ENDPOINT:-http://notify.internal:7070/send}
+      # Report / backup paths
+      REPORT_BASE_PATH: /tmp/reports
+      BACKUP_PATH: /tmp/backups
+      # Timezone
+      TZ: UTC
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  app-network:
+    driver: bridge

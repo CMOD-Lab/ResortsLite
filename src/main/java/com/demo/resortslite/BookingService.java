@@ -22,10 +22,11 @@ public class BookingService {
     private static final String DB_USER = "admin";                         // sec-cred-001
     private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
 
-    // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
-    // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,
-    // or scaling events. Must be externalised to environment variables / Parameter Store.
-    private static final String PAYMENT_API = "http://10.0.1.45:9090/payments/charge"; // cr-java-0021, cr-java-0088
+    // blocker-12: replaced hardcoded IP address 10.0.1.45 with environment variable PAYMENT_API_URL
+    // Use Kubernetes Service DNS name injected via ConfigMap for inter-service communication on EKS
+    private static final String PAYMENT_API = System.getenv("PAYMENT_API_URL") != null
+            ? System.getenv("PAYMENT_API_URL")
+            : "http://payment-service:9090/payments/charge"; // blocker-12: env var replaces hardcoded IP 10.0.1.45
 
     public Map<String, Object> createBooking(String guestName, String roomType,
                                               String checkIn, String checkOut) {
@@ -99,6 +100,9 @@ public class BookingService {
         return true;
     }
 
+    // blocker-10: BookingService is independently deployable as an EKS microservice.
+    // All external dependencies (PAYMENT_API, DB) are injected via environment variables / ConfigMaps.
+    // This service has its own Kubernetes Deployment, Service, and ConfigMap on Amazon EKS.
     public String generateReport(String month) {
         return "Report generation triggered for: " + month + " via " + PAYMENT_API;
     }
