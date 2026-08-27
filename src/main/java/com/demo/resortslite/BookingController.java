@@ -3,7 +3,10 @@ package com.demo.resortslite;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+// Updated from javax.servlet.http.HttpSession to jakarta.servlet.http.HttpSession
+// (JAVA8_TO_21_JAKARTA_EE_MIGRATION, JAVA8_TO_17_VALIDATION_ANNOTATION_UPDATES)
+// Spring Boot 3.x / Jakarta EE 10 uses jakarta.* namespace instead of javax.*
+import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 
