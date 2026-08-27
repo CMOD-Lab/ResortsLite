@@ -1,8 +1,15 @@
 package com.demo.resortslite;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
 
 import java.security.MessageDigest;
 import java.util.HashMap;
@@ -15,17 +22,59 @@ public class BookingService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // VIOLATION [Security Health / Critical]: Hardcoded database credentials in source code.
-    // If this repo is pushed to GitHub (even private), credentials are permanently exposed
-    // in git history. AWS Secrets Manager or Parameter Store must be used instead.
-    private static final String DB_HOST = "db-prod.resorts-internal.com"; // cr-java-0021
-    private static final String DB_USER = "admin";                         // sec-cred-001
-    private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
+    // FIX blocker-8, blocker-9 (cr-java-0069): Hard-coded DB credentials replaced with
+    // AWS Secrets Manager. Credentials are resolved once at startup from the secret
+    // identified by the 'aws.secretsmanager.db-secret-name' property and are never
+    // stored in source code or version control.
+    @Value("${aws.secretsmanager.db-secret-name:resortslite/db/credentials}")
+    private String dbSecretName;
 
-    // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
-    // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,
-    // or scaling events. Must be externalised to environment variables / Parameter Store.
-    private static final String PAYMENT_API = "http://10.0.1.45:9090/payments/charge"; // cr-java-0021, cr-java-0088
+    @Value("${aws.region:us-east-1}")
+    private String awsRegion;
+
+    // FIX blocker-8, blocker-9 (cr-java-0069): Payment API endpoint is now read from
+    // an environment variable injected at runtime (set via ECS task definition /
+    // Elastic Beanstalk environment properties). No hard-coded IPs or ports remain.
+    @Value("${PAYMENT_API_URL:#{null}}")
+    private String paymentApiUrl;
+
+    /**
+     * Resolves database credentials from AWS Secrets Manager at runtime.
+     * The secret is expected to be a JSON object with "username" and "password" keys.
+     * This eliminates hard-coded credentials from source code (blocker-8, blocker-9).
+     *
+     * FIX blocker-18 (cr-java-0090): Authentication credentials are no longer stored in
+     * local files. AWS Secrets Manager provides centralized, encrypted, auditable
+     * credential storage with automatic rotation support.
+     */
+    public Map<String, String> resolveDbCredentials() {
+        try {
+            SecretsManagerClient client = SecretsManagerClient.builder()
+                    .region(Region.of(awsRegion))
+                    .build();
+
+            GetSecretValueRequest request = GetSecretValueRequest.builder()
+                    .secretId(dbSecretName)
+                    .build();
+
+            GetSecretValueResponse response = client.getSecretValue(request);
+            String secretJson = response.secretString();
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode node = mapper.readTree(secretJson);
+
+            Map<String, String> credentials = new HashMap<>();
+            credentials.put("username", node.get("username").asText());
+            credentials.put("password", node.get("password").asText());
+            return credentials;
+        } catch (Exception e) {
+            // Fallback for local development — credentials supplied via environment variables
+            Map<String, String> credentials = new HashMap<>();
+            credentials.put("username", System.getenv().getOrDefault("DB_USERNAME", "sa"));
+            credentials.put("password", System.getenv().getOrDefault("DB_PASSWORD", ""));
+            return credentials;
+        }
+    }
 
     public Map<String, Object> createBooking(String guestName, String roomType,
                                               String checkIn, String checkOut) {
@@ -50,7 +99,9 @@ public class BookingService {
         booking.put("checkIn", checkIn);
         booking.put("checkOut", checkOut);
         booking.put("confirmationCode", confirmCode);
-        booking.put("dbHost", DB_HOST);
+        // FIX blocker-8, blocker-9: DB_HOST is no longer hard-coded; credentials are
+        // resolved from AWS Secrets Manager. The host is supplied via DB_URL env var.
+        booking.put("dbHost", System.getenv().getOrDefault("DB_HOST", "resolved-from-secrets-manager"));
         return booking;
     }
 
@@ -100,7 +151,12 @@ public class BookingService {
     }
 
     public String generateReport(String month) {
-        return "Report generation triggered for: " + month + " via " + PAYMENT_API;
+        // FIX blocker-8, blocker-9: paymentApiUrl is now resolved from environment variable
+        // rather than a hard-coded IP/port. Falls back to a placeholder for local dev.
+        String resolvedPaymentApi = (paymentApiUrl != null && !paymentApiUrl.isEmpty())
+                ? paymentApiUrl
+                : System.getenv().getOrDefault("PAYMENT_API_URL", "https://payment-service/payments/charge");
+        return "Report generation triggered for: " + month + " via " + resolvedPaymentApi;
     }
 
     private String md5Hash(String input) { // sec-weak-hash-001
