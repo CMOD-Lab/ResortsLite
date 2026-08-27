@@ -1,12 +1,12 @@
 package com.demo.resortslite;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 // Updated from javax.servlet.http.HttpSession to jakarta.servlet.http.HttpSession
 // (JAVA8_TO_21_JAKARTA_EE_MIGRATION, JAVA8_TO_17_VALIDATION_ANNOTATION_UPDATES)
 // Spring Boot 3.x / Jakarta EE 10 uses jakarta.* namespace instead of javax.*
-import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,27 +17,35 @@ public class BookingController {
     @Autowired
     private BookingService bookingService;
 
-    // VIOLATION cr-java-0067 [Cloud Compatibility / Mandatory]: In-memory cache without TTL
-    // breaks horizontal scaling — cache is instance-local, invisible to other EC2 instances
-    private static final Map<String, Object> bookingCache = new HashMap<>(); // cr-java-0067
+    // cr-java-0067 fix: Removed instance-local in-memory cache (bookingCache HashMap).
+    // Instance-local caches break horizontal scaling — cache is invisible to other EC2
+    // instances. Use a distributed cache (e.g., Redis / ElastiCache) for shared state.
+
+    // cr-java-0088 fix: Inventory service URL externalised to environment variable.
+    // Plain HTTP replaced with HTTPS to comply with cloud security standards.
+    @Value("${app.inventory.endpoint:https://inventory-svc.internal:8081/rooms}")
+    private String inventoryEndpoint;
+
+    // czr-java-001 fix: Report base path externalised to environment variable.
+    @Value("${app.report.base-path:/tmp/reports/}")
+    private String reportBasePath;
 
     @PostMapping("/create")
     public Map<String, Object> createBooking(
             @RequestParam String guestName,
             @RequestParam String roomType,
             @RequestParam String checkIn,
-            @RequestParam String checkOut,
-            HttpSession session) {
+            @RequestParam String checkOut) {
 
         Map<String, Object> booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Booking state stored in
-        // HTTP session memory. AWS ALB distributes requests across EC2 instances — session
-        // data on instance A is invisible to instance B. Auto-scaling and failover breaks.
-        session.setAttribute("lastBooking", booking); // cr-java-0065
-        session.setAttribute("guestName", guestName); // cr-java-0065
+        // cr-java-0065 fix: Removed HTTP session state storage for booking data.
+        // Session-based state breaks horizontal scaling (ALB distributes requests across
+        // instances; session on instance A is invisible to instance B).
+        // Booking state is now returned directly in the response; persistent state should
+        // be stored in a shared data store (e.g., RDS / DynamoDB).
 
-        bookingCache.put((String) booking.get("bookingId"), booking);
+        // cr-java-0067 fix: Removed instance-local bookingCache.put() call.
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "confirmed");
@@ -46,41 +54,35 @@ public class BookingController {
     }
 
     @GetMapping("/status/{bookingId}")
-    public Map<String, Object> getBookingStatus(
-            @PathVariable String bookingId,
-            HttpSession session) {
+    public Map<String, Object> getBookingStatus(@PathVariable String bookingId) {
 
-        // VIOLATION cr-java-0065 [Cloud Compatibility / Mandatory]: Reading business state
-        // from HTTP session — will return null on any other instance in the cluster.
-        String lastGuest = (String) session.getAttribute("guestName"); // cr-java-0065
+        // cr-java-0065 fix: Removed HTTP session read (session.getAttribute("guestName")).
+        // Session state is not shared across instances in a horizontally scaled cluster.
+        // Guest context should be retrieved from the persistent booking record instead.
 
         Map<String, Object> result = new HashMap<>();
         result.put("bookingId", bookingId);
-        result.put("sessionGuest", lastGuest);
         result.put("details", bookingService.getBookingById(bookingId));
         return result;
     }
 
     @GetMapping("/availability")
     public Map<String, Object> checkAvailability(@RequestParam String roomType) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP call to
-        // internal inventory service. AWS ALB, WAF, and Well-Architected security review
-        // enforce HTTPS. This call will be blocked or flagged in a cloud-native setup.
-        String inventoryUrl = "http://inventory-service.internal:8081/rooms/available"; // cr-java-0088
+        // cr-java-0088 fix: inventoryUrl is now injected from environment variable
+        // (app.inventory.endpoint) and uses HTTPS instead of plain HTTP.
 
         Map<String, Object> response = new HashMap<>();
         response.put("roomType", roomType);
-        response.put("inventoryEndpoint", inventoryUrl);
+        response.put("inventoryEndpoint", inventoryEndpoint);
         response.put("available", bookingService.isRoomAvailable(roomType));
         return response;
     }
 
     @GetMapping("/report/download")
     public Map<String, Object> downloadReport(@RequestParam String month) {
-        // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute
-        // file path. This path does not exist inside a container image. Container images
-        // have their own isolated file systems — /var/legacy/reports won't be present.
-        String reportPath = "/var/legacy/reports/" + month + "_bookings.pdf"; // czr-java-001
+        // czr-java-001 fix: Replaced hardcoded /var/legacy/reports/ absolute path with
+        // environment-variable-backed reportBasePath injected via @Value.
+        String reportPath = reportBasePath + month + "_bookings.pdf";
 
         Map<String, Object> response = new HashMap<>();
         response.put("reportPath", reportPath);

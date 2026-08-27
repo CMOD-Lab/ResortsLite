@@ -46,9 +46,11 @@
             <artifactId>commons-collections</artifactId>
             <version>3.2.2</version>
         </dependency>
+        <!-- Replaced H2 in-memory database with PostgreSQL JDBC driver for PostgreSQL 16 compatibility -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
         </dependency>
     </dependencies>
