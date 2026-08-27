@@ -65,10 +65,13 @@
             <version>3.2.2</version>
         </dependency>
 
-        <!-- H2 in-memory database for development/testing -->
+        <!-- PostgreSQL JDBC Driver — replaces H2 in-memory database.
+             Targets PostgreSQL 16 as the production database provider.
+             Rule: DB_MIGRATION_SQLSERVER_TO_POSTGRES / CONNECTION_STRING_CONVERSION -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
             <scope>runtime</scope>
         </dependency>
 

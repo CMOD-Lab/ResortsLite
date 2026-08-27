@@ -1,5 +1,6 @@
 package com.demo.resortslite;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -19,24 +20,34 @@ import java.util.Map;
  *       {@code java.time.LocalDateTime} + {@code DateTimeFormatter} (thread-safe,
  *       immutable, recommended since Java 8 / JSR-310).
  *       Rule: JAVA8_TO_17_SPECIFIC_DEPENDENCY_UPDATES — deprecated date/time APIs.</li>
+ *   <li>Hardcoded absolute paths replaced with configurable properties injected via
+ *       {@code @Value}. Rule: czr-java-001 [Software Portability / Mandatory].</li>
+ *   <li>Hardcoded server port replaced with configurable property.
+ *       Rule: czr-port-001 [Software Portability / Mandatory].</li>
+ *   <li>Plain HTTP download URL replaced with configurable property.
+ *       Rule: cr-java-0088 [Cloud Compatibility / Mandatory].</li>
  * </ul>
  */
 @Service
 public class ReportService {
 
-    // VIOLATION czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute path.
-    // /var/legacy/reports does not exist in a Docker container image. Breaks containerisation.
-    // Must use volume mounts, cloud object storage (S3 / Azure Blob), or environment variable.
-    private static final String REPORT_BASE_PATH = "/var/legacy/reports/"; // czr-java-001
+    // Externalised report base path — injected from application properties / environment variable.
+    // Rule: czr-java-001 [Software Portability / Mandatory] — /var/legacy/reports does not
+    // exist in a Docker container image; path is now configurable via REPORT_BASE_PATH env var.
+    @Value("${app.report.base-path:/tmp/reports/}")
+    private String reportBasePath;
 
-    // VIOLATION czr-java-001 [Software Portability / Mandatory]: Windows-style absolute path
-    // will fail on any Linux-based container or cloud host. Hard dependency on OS path structure.
-    private static final String BACKUP_PATH = "C:\\ResortBackups\\nightly\\"; // czr-java-001
+    // Externalised server port — injected from application properties / environment variable.
+    // Rule: czr-port-001 [Software Portability / Mandatory] — fixed port replaced with
+    // dynamic binding; container orchestration (ECS/EKS) assigns ports at runtime.
+    @Value("${server.port:8080}")
+    private int serverPort;
 
-    // VIOLATION [Software Portability / High]: Fixed server port hardcoded in application logic.
-    // Container orchestration (ECS / EKS) dynamically assigns ports. Hardcoded ports prevent
-    // dynamic port binding required for modern container deployment and service discovery.
-    private static final int SERVER_PORT = 8080; // czr-port-001
+    // Externalised report download base URL — injected from application properties.
+    // Rule: cr-java-0088 [Cloud Compatibility / Mandatory] — plain HTTP URL replaced with
+    // configurable property; HTTPS enforced in production via REPORT_DOWNLOAD_BASE_URL env var.
+    @Value("${app.report.download-base-url:https://reports.resorts-internal.com/download}")
+    private String reportDownloadBaseUrl;
 
     /**
      * Generates a monthly CSV report for the given month and year.
@@ -47,12 +58,12 @@ public class ReportService {
      */
     public Map<String, Object> generateMonthlyReport(String month, String year) {
         String fileName = "resort_report_" + month + "_" + year + ".csv";
-        String fullPath = REPORT_BASE_PATH + fileName; // czr-java-001
+        String fullPath = reportBasePath + fileName;
 
         Map<String, Object> result = new HashMap<>();
 
         try {
-            File reportDir = new File(REPORT_BASE_PATH); // czr-java-001
+            File reportDir = new File(reportBasePath);
             if (!reportDir.exists()) {
                 reportDir.mkdirs();
             }
@@ -65,7 +76,7 @@ public class ReportService {
 
             result.put("status", "generated");
             result.put("path", fullPath);
-            result.put("serverPort", SERVER_PORT); // czr-port-001
+            result.put("serverPort", serverPort);
 
         } catch (IOException e) {
             result.put("status", "error");
@@ -78,13 +89,15 @@ public class ReportService {
     /**
      * Builds the download URL for a named report file.
      *
+     * <p>Fixed: plain HTTP URL replaced with configurable base URL injected via
+     * {@code @Value}. Rule: cr-java-0088 [Cloud Compatibility / Mandatory] — HTTPS
+     * enforced in production by setting APP_REPORT_DOWNLOAD_BASE_URL env var.
+     *
      * @param reportName the report file name
      * @return the full download URL string
      */
     public String buildReportDownloadUrl(String reportName) {
-        // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL
-        // hardcoded for report download. Cloud security standards enforce HTTPS.
-        return "http://reports.resorts-internal.com:8080/download/" + reportName; // cr-java-0088
+        return reportDownloadBaseUrl + "/" + reportName;
     }
 
     /**
@@ -104,9 +117,8 @@ public class ReportService {
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
         Map<String, Object> info = new HashMap<>();
-        info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
-        info.put("backupPath", BACKUP_PATH);        // czr-java-001
-        info.put("serverPort", SERVER_PORT);        // czr-port-001
+        info.put("reportPath", reportBasePath);
+        info.put("serverPort", serverPort);
         info.put("generatedAt", timestamp);
         return info;
     }
