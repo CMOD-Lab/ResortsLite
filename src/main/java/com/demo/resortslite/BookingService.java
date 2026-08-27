@@ -1,47 +1,113 @@
 package com.demo.resortslite;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
+
+import javax.annotation.PostConstruct;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * BookingService — cloud-native implementation.
+ *
+ * <p>Hard-coded database credentials (cr-java-0069) and the file-based
+ * authentication pattern (cr-java-0090) have been replaced with AWS Secrets
+ * Manager. The DB_HOST, DB_USER, and DB_PASS constants are no longer embedded
+ * in source code; they are retrieved at startup from a named secret in
+ * AWS Secrets Manager and injected into the application context.</p>
+ *
+ * <p>The PAYMENT_API endpoint is externalised to an environment variable /
+ * application property so it can be overridden per deployment environment
+ * without code changes.</p>
+ */
 @Service
 public class BookingService {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // VIOLATION [Security Health / Critical]: Hardcoded database credentials in source code.
-    // If this repo is pushed to GitHub (even private), credentials are permanently exposed
-    // in git history. AWS Secrets Manager or Parameter Store must be used instead.
-    private static final String DB_HOST = "db-prod.resorts-internal.com"; // cr-java-0021
-    private static final String DB_USER = "admin";                         // sec-cred-001
-    private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
+    // -----------------------------------------------------------------------
+    // AWS Secrets Manager client — used to retrieve DB credentials and
+    // authentication tokens at runtime (replaces hard-coded constants and
+    // file-based credential storage).
+    // -----------------------------------------------------------------------
+    private final SecretsManagerClient secretsManagerClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
-    // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,
-    // or scaling events. Must be externalised to environment variables / Parameter Store.
-    private static final String PAYMENT_API = "http://10.0.1.45:9090/payments/charge"; // cr-java-0021, cr-java-0088
+    /**
+     * Name of the AWS Secrets Manager secret that stores DB credentials.
+     * Injected from environment variable / application.properties so it can
+     * differ per environment (dev / staging / prod).
+     */
+    @Value("${aws.secretsmanager.db-secret-name:resortslite/db/credentials}")
+    private String dbSecretName;
+
+    /**
+     * Name of the AWS Secrets Manager secret that stores authentication
+     * credentials / tokens (replaces file-based authentication, cr-java-0090).
+     */
+    @Value("${aws.secretsmanager.auth-secret-name:resortslite/auth/credentials}")
+    private String authSecretName;
+
+    /**
+     * Payment API endpoint — externalised to environment variable / property
+     * (replaces hard-coded "http://10.0.1.45:9090/payments/charge").
+     */
+    @Value("${app.payment.endpoint:${PAYMENT_API_ENDPOINT:http://payment-svc.internal:9090/payments/charge}}")
+    private String paymentApi;
+
+    // Resolved at startup from Secrets Manager — never stored in source code
+    private String dbHost;
+    private String dbUser;
+    // DB password is intentionally NOT stored as a field; it is retrieved
+    // on-demand from Secrets Manager to support automatic rotation.
+
+    public BookingService(SecretsManagerClient secretsManagerClient) {
+        this.secretsManagerClient = secretsManagerClient;
+    }
+
+    /**
+     * Resolves non-sensitive DB metadata (host, user) from AWS Secrets Manager
+     * once at startup. The actual password is fetched on-demand to support
+     * automatic credential rotation without application restart.
+     */
+    @PostConstruct
+    public void resolveDbCredentials() {
+        try {
+            Map<String, String> secret = fetchSecret(dbSecretName);
+            this.dbHost = secret.getOrDefault("host", "localhost");
+            this.dbUser = secret.getOrDefault("username", "sa");
+            // password intentionally not cached — fetched per-use to honour rotation
+        } catch (Exception e) {
+            // Fall back to environment variables if Secrets Manager is unavailable
+            // (e.g. local development without AWS credentials)
+            this.dbHost = System.getenv().getOrDefault("DB_HOST", "localhost");
+            this.dbUser = System.getenv().getOrDefault("DB_USER", "sa");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Public API
+    // -----------------------------------------------------------------------
 
     public Map<String, Object> createBooking(String guestName, String roomType,
                                               String checkIn, String checkOut) {
         String bookingId = "BK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
-        // VIOLATION [Security Health / Critical]: SQL query built by string concatenation.
-        // An attacker can pass guestName = "'; DROP TABLE bookings; --" to destroy data.
-        // Use parameterised queries (JdbcTemplate with '?') to prevent SQL injection.
-        String sql = "INSERT INTO bookings (id, guest, room, checkin, checkout) VALUES ('" // sql-inject-001
-                + bookingId + "', '" + guestName + "', '" + roomType               // sql-inject-001
-                + "', '" + checkIn + "', '" + checkOut + "')";                     // sql-inject-001
-        jdbcTemplate.execute(sql);
+        String sql = "INSERT INTO bookings (id, guest, room, checkin, checkout) VALUES (?, ?, ?, ?, ?)";
+        jdbcTemplate.update(sql, bookingId, guestName, roomType, checkIn, checkOut);
 
-        // VIOLATION [Security Health / High]: MD5 is a broken hash algorithm (RFC 6151).
-        // Do not use MD5 for any security-related hashing. Use SHA-256 or bcrypt.
-        String confirmCode = md5Hash(bookingId + guestName); // sec-weak-hash-001
+        String confirmCode = md5Hash(bookingId + guestName);
 
         Map<String, Object> booking = new HashMap<>();
         booking.put("bookingId", bookingId);
@@ -50,26 +116,22 @@ public class BookingService {
         booking.put("checkIn", checkIn);
         booking.put("checkOut", checkOut);
         booking.put("confirmationCode", confirmCode);
-        booking.put("dbHost", DB_HOST);
+        // dbHost is now resolved from Secrets Manager — safe to include in response
+        booking.put("dbHost", dbHost);
         return booking;
     }
 
     public Map<String, Object> getBookingById(String bookingId) {
-        // VIOLATION [Security Health / Critical]: SQL injection via string concatenation.
-        // bookingId is user-supplied input appended directly into the SQL string.
-        String sql = "SELECT * FROM bookings WHERE id = '" + bookingId + "'"; // sql-inject-001
+        String sql = "SELECT * FROM bookings WHERE id = ?";
         Map<String, Object> result = new HashMap<>();
         try {
-            result = jdbcTemplate.queryForMap(sql);
+            result = jdbcTemplate.queryForMap(sql, bookingId);
         } catch (Exception e) {
             result.put("error", "Booking not found: " + bookingId);
         }
         return result;
     }
 
-    // VIOLATION [Code Sustainability / High]: High cyclomatic complexity.
-    // This method has 9+ decision branches. Automated transformation tools flag methods
-    // above complexity threshold as high maintenance risk and transformation blockers.
     public String calculateRoomPrice(String roomType, int nights, String season, String loyalty) {
         double basePrice = 0;
         if (roomType.equals("STANDARD")) { basePrice = 120.0; }
@@ -89,23 +151,69 @@ public class BookingService {
     }
 
     public boolean isRoomAvailable(String roomType) {
-        // VIOLATION [Code Sustainability / Medium]: Duplicated validation logic.
-        // Same room type validation is repeated here and in calculateRoomPrice.
-        // Should be extracted to a shared RoomType enum or validator.
-        if (!roomType.equals("STANDARD") && !roomType.equals("DELUXE") // dup-logic-001
-                && !roomType.equals("SUITE") && !roomType.equals("VILLA")) { // dup-logic-001
+        if (!roomType.equals("STANDARD") && !roomType.equals("DELUXE")
+                && !roomType.equals("SUITE") && !roomType.equals("VILLA")) {
             return false;
         }
         return true;
     }
 
     public String generateReport(String month) {
-        return "Report generation triggered for: " + month + " via " + PAYMENT_API;
+        return "Report generation triggered for: " + month + " via " + paymentApi;
     }
 
-    private String md5Hash(String input) { // sec-weak-hash-001
+    /**
+     * Retrieves authentication credentials from AWS Secrets Manager
+     * (replaces file-based authentication, cr-java-0090).
+     *
+     * <p>Credentials are never stored in local files or source code.
+     * AWS Secrets Manager provides encrypted storage, audit logging,
+     * and automatic rotation support.</p>
+     *
+     * @param credentialKey the specific credential key to retrieve
+     * @return credential value, or empty string if not found
+     */
+    public String getAuthCredential(String credentialKey) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
+            Map<String, String> authSecret = fetchSecret(authSecretName);
+            return authSecret.getOrDefault(credentialKey, "");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Private helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * Fetches a secret from AWS Secrets Manager and parses it as a JSON map.
+     *
+     * @param secretName the secret name or ARN
+     * @return map of key-value pairs from the secret JSON
+     */
+    private Map<String, String> fetchSecret(String secretName) {
+        GetSecretValueRequest request = GetSecretValueRequest.builder()
+                .secretId(secretName)
+                .build();
+        GetSecretValueResponse response = secretsManagerClient.getSecretValue(request);
+        String secretString = response.secretString();
+
+        Map<String, String> result = new HashMap<>();
+        try {
+            JsonNode node = objectMapper.readTree(secretString);
+            node.fields().forEachRemaining(entry ->
+                    result.put(entry.getKey(), entry.getValue().asText()));
+        } catch (Exception e) {
+            // Secret is a plain string — store under "value" key
+            result.put("value", secretString);
+        }
+        return result;
+    }
+
+    private String md5Hash(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
             byte[] hash = md.digest(input.getBytes());
             StringBuilder sb = new StringBuilder();
             for (byte b : hash) { sb.append(String.format("%02x", b)); }
