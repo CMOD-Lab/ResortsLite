@@ -47,6 +47,54 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Azure Blob Storage SDK for cloud-native file storage (replaces local file paths) -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <version>12.25.1</version>
+        </dependency>
+        <!-- Azure Key Vault Secrets SDK (cr-java-0069 remediation: replaces hard-coded DB credentials) -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.8.2</version>
+        </dependency>
+        <!-- Azure Identity SDK: provides DefaultAzureCredential for Managed Identity / service principal auth -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.12.2</version>
+        </dependency>
+        <!-- cr-java-0111 REMEDIATION: Azure Service Bus client for scheduled message delivery.
+             Replaces java.util.Timer / server-local scheduling with distributed, timezone-agnostic
+             task execution via Azure Service Bus scheduled messages. -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-messaging-servicebus</artifactId>
+            <version>7.15.1</version>
+        </dependency>
+        <!-- Azure Cache for Redis: Spring Session with Redis for stateless, horizontally-scalable session storage (cr-java-0065 remediation) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+        <!-- cr-java-0090 REMEDIATION: Spring Security OAuth2 Resource Server for Azure AD
+             (Entra ID) JWT-based authentication. Replaces file-based credential storage
+             with centralised, scalable identity management via Azure Active Directory.
+             Spring Security validates incoming Bearer JWT tokens against the Azure AD
+             JWKS endpoint configured in spring.security.oauth2.resourceserver.jwt.issuer-uri. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
