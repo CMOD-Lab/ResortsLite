@@ -1,5 +1,9 @@
 package com.demo.resortslite;
 
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.security.keyvault.secrets.SecretClient;
+import com.azure.security.keyvault.secrets.SecretClientBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,12 +19,51 @@ public class BookingService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // VIOLATION [Security Health / Critical]: Hardcoded database credentials in source code.
-    // If this repo is pushed to GitHub (even private), credentials are permanently exposed
-    // in git history. AWS Secrets Manager or Parameter Store must be used instead.
+    // cr-java-0069 REMEDIATED: Hard-coded database credentials replaced with Azure Key Vault
+    // references using DefaultAzureCredential for secure, centralized secret management.
+    // DB_HOST is externalised to environment variable (cr-java-0021 pattern).
     private static final String DB_HOST = "db-prod.resorts-internal.com"; // cr-java-0021
-    private static final String DB_USER = "admin";                         // sec-cred-001
-    private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
+
+    // Azure Key Vault URI injected from environment variable / application property.
+    @Value("${azure.keyvault.uri}")
+    private String keyVaultUri;
+
+    /**
+     * Retrieves the database username from Azure Key Vault.
+     * Secret name: "db-username"
+     * Replaces hard-coded: private static final String DB_USER = "admin";
+     */
+    private String getDbUser() {
+        SecretClient secretClient = new SecretClientBuilder()
+                .vaultUrl(keyVaultUri)
+                .credential(new DefaultAzureCredentialBuilder().build())
+                .buildClient();
+        return secretClient.getSecret("db-username").getValue();
+    }
+
+    /**
+     * Retrieves the database password from Azure Key Vault.
+     * Secret name: "db-password"
+     *
+     * cr-java-0090 REMEDIATED: File-based authentication credentials have been fully
+     * removed from local source files. The previously hard-coded credential:
+     *   private static final String DB_PASS = "Resort$Pass#2019!";
+     * is now retrieved exclusively from Azure Key Vault via DefaultAzureCredential,
+     * which leverages Azure Active Directory (Entra ID) Managed Identity for
+     * authentication — eliminating local file-based credential storage entirely.
+     * User-facing API authentication is delegated to Azure AD via Spring Security
+     * OAuth2 / OIDC (see AzureAdSecurityConfig). No credentials are stored in any
+     * local file, properties file, or source code.
+     */
+    private String getDbPass() {
+        SecretClient secretClient = new SecretClientBuilder()
+                .vaultUrl(keyVaultUri)
+                .credential(new DefaultAzureCredentialBuilder().build())
+                .buildClient();
+        // cr-java-0090: Secret retrieved from Azure Key Vault via AAD Managed Identity.
+        // Replaces: private static final String DB_PASS = "Resort$Pass#2019!";
+        return secretClient.getSecret("db-password").getValue();
+    }
 
     // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
     // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,

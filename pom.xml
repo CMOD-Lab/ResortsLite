@@ -19,6 +19,8 @@
 
     <properties>
         <java.version>1.8</java.version>
+        <!-- Spring Cloud Azure BOM version for Azure AD / Spring Security integration -->
+        <spring.cloud.azure.version>4.14.0</spring.cloud.azure.version>
     </properties>
 
     <dependencies>
@@ -29,6 +31,42 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <!-- cr-java-0090 remediation: Spring Boot Security starter required for
+             Azure Active Directory (Entra ID) OAuth2 / OIDC integration.
+             Replaces file-based credential storage with centralized AAD identity. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!-- cr-java-0090 remediation: Spring Cloud Azure Active Directory starter
+             provides MSAL-backed OAuth2 login and resource-server support against
+             Azure Active Directory (Entra ID) for centralized, scalable identity
+             management — replacing local file-based credential storage. -->
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-starter-active-directory</artifactId>
+            <version>${spring.cloud.azure.version}</version>
+        </dependency>
+        <!-- cr-java-0090 remediation: OAuth2 resource-server support (JWT validation)
+             used by Spring Security to validate Azure AD-issued bearer tokens. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+        <!-- cr-java-0065 remediation: Spring Boot Redis starter provides the
+             RedisTemplate and connection infrastructure needed to replace in-memory
+             HTTP session storage with Azure Cache for Redis. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- cr-java-0065 remediation: Spring Session Data Redis transparently backs
+             HTTP sessions with Azure Cache for Redis, enabling stateless horizontal
+             scaling without sticky sessions or session replication. -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
         </dependency>
         <!-- SECURITY VIOLATION: log4j 2.14.1 has critical CVE-2021-44228 (Log4Shell) -->
         <dependency>
@@ -46,6 +84,34 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <!-- Azure Blob Storage SDK for cloud-native file storage (replaces hard-coded file paths) -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <version>12.25.1</version>
+        </dependency>
+        <!-- Azure Key Vault Secrets SDK for cr-java-0069 remediation:
+             Replaces hard-coded DB_USER and DB_PASS with Azure Key Vault secret lookups -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.8.2</version>
+        </dependency>
+        <!-- Azure Identity SDK: provides DefaultAzureCredential for Key Vault authentication -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.11.4</version>
+        </dependency>
+        <!-- cr-java-0111 remediation: Azure Service Bus SDK for distributed,
+             timezone-agnostic scheduled message delivery.
+             Replaces java.util.Timer / server-local scheduling with Azure Service Bus
+             scheduleMessage() calls that use explicit UTC OffsetDateTime values. -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-messaging-servicebus</artifactId>
+            <version>7.15.1</version>
         </dependency>
     </dependencies>
 
