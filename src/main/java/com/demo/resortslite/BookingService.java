@@ -1,5 +1,6 @@
 package com.demo.resortslite;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,26 +16,32 @@ public class BookingService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // Updated: Credentials and infrastructure endpoints should be externalised to
-    // environment variables / AWS Parameter Store / Secrets Manager (cr-java-0021, sec-cred-001).
-    // Hardcoded values removed; use application.properties or environment variables instead.
-    private static final String DB_HOST = System.getenv().getOrDefault("DB_HOST", "db-prod.resorts-internal.com");
-    private static final String DB_USER = System.getenv().getOrDefault("DB_USER", "");
-    private static final String DB_PASS = System.getenv().getOrDefault("DB_PASS", "");
+    // Updated: Credentials and infrastructure endpoints externalised to environment
+    // variables / AWS Parameter Store / Secrets Manager (fixes cr-java-0021, sec-cred-001).
+    // DB_HOST is no longer needed here — connection is managed by Spring DataSource config.
+    @Value("${PAYMENT_API_URL:https://payment-svc.internal/payments/charge}")
+    private String paymentApi;
 
-    // Updated: Externalised payment API endpoint (cr-java-0021, cr-java-0088).
-    private static final String PAYMENT_API = System.getenv().getOrDefault(
-            "PAYMENT_API_URL", "https://payment-svc.internal/payments/charge");
-
+    /**
+     * Creates a new booking record in the PostgreSQL database.
+     * Uses parameterised queries to prevent SQL injection (fixes sql-inject-001).
+     *
+     * @param guestName  Name of the guest
+     * @param roomType   Type of room (STANDARD, DELUXE, SUITE, VILLA)
+     * @param checkIn    Check-in date string (yyyy-MM-dd)
+     * @param checkOut   Check-out date string (yyyy-MM-dd)
+     * @return Map containing booking details and confirmation code
+     */
     public Map<String, Object> createBooking(String guestName, String roomType,
                                               String checkIn, String checkOut) {
         String bookingId = "BK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
-        // Updated: SQL injection fixed — parameterised query used instead of string concatenation (sql-inject-001).
+        // Updated: Parameterised query used to prevent SQL injection (fixes sql-inject-001).
+        // PostgreSQL-compatible INSERT statement — uses standard ANSI SQL syntax.
         String sql = "INSERT INTO bookings (id, guest, room, checkin, checkout) VALUES (?, ?, ?, ?, ?)";
         jdbcTemplate.update(sql, bookingId, guestName, roomType, checkIn, checkOut);
 
-        // Updated: MD5 replaced with SHA-256 (sec-weak-hash-001).
+        // Updated: MD5 replaced with SHA-256 (fixes sec-weak-hash-001).
         // MD5 is a broken hash algorithm (RFC 6151); SHA-256 is the minimum acceptable standard.
         String confirmCode = sha256Hash(bookingId + guestName);
 
@@ -45,12 +52,21 @@ public class BookingService {
         booking.put("checkIn", checkIn);
         booking.put("checkOut", checkOut);
         booking.put("confirmationCode", confirmCode);
-        booking.put("dbHost", DB_HOST);
+        // Updated: Removed dbHost from response — infrastructure details must not be
+        // exposed in API responses (fixes cr-java-0021 / information disclosure).
         return booking;
     }
 
+    /**
+     * Retrieves a booking record by its ID from the PostgreSQL database.
+     * Uses parameterised query to prevent SQL injection (fixes sql-inject-001).
+     *
+     * @param bookingId  The booking identifier
+     * @return Map containing booking details or an error entry if not found
+     */
     public Map<String, Object> getBookingById(String bookingId) {
-        // Updated: SQL injection fixed — parameterised query used instead of string concatenation (sql-inject-001).
+        // Updated: Parameterised query used to prevent SQL injection (fixes sql-inject-001).
+        // PostgreSQL-compatible SELECT statement — standard ANSI SQL syntax.
         String sql = "SELECT * FROM bookings WHERE id = ?";
         Map<String, Object> result = new HashMap<>();
         try {
@@ -61,8 +77,17 @@ public class BookingService {
         return result;
     }
 
-    // Updated: Cyclomatic complexity reduced by extracting base price and discount lookups
-    // into helper methods (dup-logic-001, complexity threshold).
+    /**
+     * Calculates the total room price based on room type, number of nights,
+     * season, and loyalty tier. Applies season multipliers and loyalty discounts.
+     * Cyclomatic complexity reduced by extracting helper methods (fixes dup-logic-001).
+     *
+     * @param roomType  Room category (STANDARD, DELUXE, SUITE, VILLA)
+     * @param nights    Number of nights
+     * @param season    Season code (PEAK, OFF, or default)
+     * @param loyalty   Loyalty tier (GOLD, PLATINUM, DIAMOND, or default)
+     * @return Formatted total price string
+     */
     public String calculateRoomPrice(String roomType, int nights, String season, String loyalty) {
         double basePrice = getBasePrice(roomType);
         basePrice = applySeasonMultiplier(basePrice, season);
@@ -76,13 +101,25 @@ public class BookingService {
         return String.format("%.2f", total);
     }
 
+    /**
+     * Checks whether the given room type is a valid/available option.
+     *
+     * @param roomType  Room category to validate
+     * @return true if the room type is valid, false otherwise
+     */
     public boolean isRoomAvailable(String roomType) {
-        // Updated: Validation delegated to shared helper to eliminate duplicated logic (dup-logic-001).
+        // Updated: Validation delegated to shared helper to eliminate duplicated logic (fixes dup-logic-001).
         return isValidRoomType(roomType);
     }
 
+    /**
+     * Triggers report generation for the specified month.
+     *
+     * @param month  Month identifier for the report
+     * @return Status message indicating report generation was triggered
+     */
     public String generateReport(String month) {
-        return "Report generation triggered for: " + month + " via " + PAYMENT_API;
+        return "Report generation triggered for: " + month + " via " + paymentApi;
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
@@ -120,7 +157,10 @@ public class BookingService {
 
     /**
      * Computes a SHA-256 hex digest of the given input string.
-     * Replaces the previous MD5 implementation (sec-weak-hash-001).
+     * Replaces the previous MD5 implementation (fixes sec-weak-hash-001).
+     *
+     * @param input  String to hash
+     * @return Hex-encoded SHA-256 digest, or the original input on error
      */
     private String sha256Hash(String input) {
         try {
