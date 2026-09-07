@@ -4,6 +4,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+// Updated from MD5 (broken hash algorithm, RFC 6151) to SHA-256 for Java 17 security compliance
+// (JAVA8_TO_21_SECURITY_CHANGES)
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,9 +41,9 @@ public class BookingService {
                 + "', '" + checkIn + "', '" + checkOut + "')";                     // sql-inject-001
         jdbcTemplate.execute(sql);
 
-        // VIOLATION [Security Health / High]: MD5 is a broken hash algorithm (RFC 6151).
-        // Do not use MD5 for any security-related hashing. Use SHA-256 or bcrypt.
-        String confirmCode = md5Hash(bookingId + guestName); // sec-weak-hash-001
+        // Updated from MD5 (broken hash, RFC 6151) to SHA-256 for Java 17 security compliance
+        // (JAVA8_TO_21_SECURITY_CHANGES)
+        String confirmCode = sha256Hash(bookingId + guestName);
 
         Map<String, Object> booking = new HashMap<>();
         booking.put("bookingId", bookingId);
@@ -103,9 +105,14 @@ public class BookingService {
         return "Report generation triggered for: " + month + " via " + PAYMENT_API;
     }
 
-    private String md5Hash(String input) { // sec-weak-hash-001
+    /**
+     * Computes a SHA-256 hash of the given input string.
+     * Replaces the previously used MD5 algorithm (broken per RFC 6151).
+     * (JAVA8_TO_21_SECURITY_CHANGES)
+     */
+    private String sha256Hash(String input) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] hash = md.digest(input.getBytes());
             StringBuilder sb = new StringBuilder();
             for (byte b : hash) { sb.append(String.format("%02x", b)); }
