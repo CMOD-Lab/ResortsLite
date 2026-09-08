@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: resortsLite
+  labels:
+    name: resortsLite
+    app: resortsLite
+    managed-by: kubectl

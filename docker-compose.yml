@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  resortsLite:
+    image: resortsLite:latest
+    container_name: resortsLite-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - TZ=UTC
+      # Redis configuration — provide actual values at runtime
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # Application paths — override via .env or environment
+      - REPORT_BASE_PATH=${REPORT_BASE_PATH:-/reports}
+      - BACKUP_PATH=${BACKUP_PATH:-/backups/nightly}
+      # External service endpoints
+      - PAYMENT_API_URL=${PAYMENT_API_URL:-http://payment-service/payments/charge}
+      - APP_PAYMENT_ENDPOINT=${APP_PAYMENT_ENDPOINT:-http://payment-svc.internal:9090/charge}
+      - APP_INVENTORY_ENDPOINT=${APP_INVENTORY_ENDPOINT:-http://inventory-svc.internal:8081/rooms}
+      - APP_NOTIFICATION_ENDPOINT=${APP_NOTIFICATION_ENDPOINT:-http://notify.internal:7070/send}
+    volumes:
+      - reports-data:/reports
+      - backups-data:/backups/nightly
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  reports-data:
+  backups-data:
+
+networks:
+  app-network:
+    driver: bridge
