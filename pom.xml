@@ -15,33 +15,81 @@
     <artifactId>resortsLite</artifactId>
     <version>1.0.0</version>
     <name>ResortsLite</name>
-    <description>Legacy resort booking demo — Java 8 / Spring Boot 2.7.x</description>
+    <description>Legacy resort booking demo — Java 8 / Spring Boot 2.7.x — Cloud-Ready (AWS)</description>
 
     <properties>
         <java.version>1.8</java.version>
+        <aws.sdk.version>2.20.98</aws.sdk.version>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <!-- AWS SDK for Java v2 BOM — manages all AWS SDK module versions -->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
+        <!-- Spring Boot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+
+        <!-- Spring Boot JDBC -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
-        <!-- SECURITY VIOLATION: log4j 2.14.1 has critical CVE-2021-44228 (Log4Shell) -->
+
+        <!-- Spring Session with Redis — blocker-13 to blocker-17: cr-java-0065
+             Replaces HttpSession with distributed session management via Amazon ElastiCache for Redis -->
         <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
         </dependency>
-        <!-- SECURITY VIOLATION: commons-collections 3.2.1 has CVE-2015-6420 (RCE) -->
+
+        <!-- Spring Data Redis — blocker-20: cr-java-0067
+             Provides RedisTemplate for distributed caching with TTL via Amazon ElastiCache -->
         <dependency>
-            <groupId>commons-collections</groupId>
-            <artifactId>commons-collections</artifactId>
-            <version>3.2.1</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+
+        <!-- AWS SDK S3 — blocker-1 to blocker-7: cr-java-0061, cr-java-0062, cr-java-0063
+             Replaces local file system operations with Amazon S3 object storage -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+        </dependency>
+
+        <!-- AWS SDK Secrets Manager — blocker-8, blocker-9: cr-java-0069; blocker-18: cr-java-0090
+             Replaces hard-coded database credentials and file-based authentication -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>secretsmanager</artifactId>
+        </dependency>
+
+        <!-- AWS SDK SSM Parameter Store — blocker-10, blocker-11: cr-java-0071; blocker-12: cr-java-0077
+             Replaces hard-coded environment URLs and port numbers -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssm</artifactId>
+        </dependency>
+
+        <!-- Jackson for JSON parsing of Secrets Manager responses -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- H2 in-memory database for local development -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
