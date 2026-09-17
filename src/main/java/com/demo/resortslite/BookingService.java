@@ -4,6 +4,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+// -----------------------------------------------------------------------
+// FIXED (issue-5): Replaced MD5 (broken per RFC 6151) with SHA-256.
+// MD5 is cryptographically broken and must not be used for security-
+// sensitive operations. SHA-256 is the Java 17 idiomatic replacement.
+// -----------------------------------------------------------------------
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,9 +44,10 @@ public class BookingService {
                 + "', '" + checkIn + "', '" + checkOut + "')";                     // sql-inject-001
         jdbcTemplate.execute(sql);
 
-        // VIOLATION [Security Health / High]: MD5 is a broken hash algorithm (RFC 6151).
-        // Do not use MD5 for any security-related hashing. Use SHA-256 or bcrypt.
-        String confirmCode = md5Hash(bookingId + guestName); // sec-weak-hash-001
+        // FIXED (issue-5): SHA-256 replaces the previously used MD5 algorithm.
+        // MessageDigest.getInstance("SHA-256") is available in all Java versions >= 1.4
+        // and is the recommended secure hash for Java 17 applications.
+        String confirmCode = sha256Hash(bookingId + guestName);
 
         Map<String, Object> booking = new HashMap<>();
         booking.put("bookingId", bookingId);
@@ -103,12 +109,22 @@ public class BookingService {
         return "Report generation triggered for: " + month + " via " + PAYMENT_API;
     }
 
-    private String md5Hash(String input) { // sec-weak-hash-001
+    /**
+     * Computes a SHA-256 hex digest of the given input string.
+     * Replaces the previously used MD5 algorithm (broken per RFC 6151).
+     * SHA-256 is the Java 17 recommended secure hash algorithm.
+     *
+     * @param input the string to hash
+     * @return lowercase hex-encoded SHA-256 digest, or the raw input on error
+     */
+    private String sha256Hash(String input) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
-            byte[] hash = md.digest(input.getBytes());
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
-            for (byte b : hash) { sb.append(String.format("%02x", b)); }
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
             return sb.toString();
         } catch (Exception e) {
             return input;
