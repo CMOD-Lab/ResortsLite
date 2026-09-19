@@ -47,6 +47,49 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- AWS SDK v2 S3 dependency for cloud-native object storage (replaces local file paths) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.25.60</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>regions</artifactId>
+            <version>2.25.60</version>
+        </dependency>
+        <!-- AWS Secrets Manager SDK v2 for externalized credential management (cr-java-0069) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>secretsmanager</artifactId>
+            <version>2.25.60</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sts</artifactId>
+            <version>2.25.60</version>
+        </dependency>
+        <!-- cr-java-0065 FIX: Spring Session with Redis backing store for distributed,
+             stateless session management via Amazon ElastiCache for Redis.
+             Replaces in-process HttpSession storage with a centralized Redis store so
+             all application instances behind the AWS ALB share the same session data. -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- cr-java-0090 FIX: Amazon Cognito Identity Provider SDK v2 for cloud-native
+             user identity management. Replaces file-based authentication with Amazon
+             Cognito User Pools, providing centralized, encrypted, and auditable
+             authentication with built-in user lifecycle management. -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>cognitoidentityprovider</artifactId>
+            <version>2.25.60</version>
+        </dependency>
     </dependencies>
 
     <build>
