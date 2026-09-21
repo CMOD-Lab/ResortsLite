@@ -65,17 +65,14 @@
             <version>4.4</version>
         </dependency>
 
-        <!-- In-memory H2 database for development / testing -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-
         <!-- ============================================================
-             Spring Boot Test (JUnit 5 / Jupiter via spring-boot-test)
-             Replaces JUnit 4 test runner
+             PostgreSQL JDBC Driver — replaces H2 in-memory database.
+             Connects to PostgreSQL 16 for production-grade persistence.
              ============================================================ -->
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
+            <scope>runtime</scope>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
