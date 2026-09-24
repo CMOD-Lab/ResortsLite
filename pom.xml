@@ -19,6 +19,8 @@
 
     <properties>
         <java.version>1.8</java.version>
+        <azure.sdk.version>1.2.24</azure.sdk.version>
+        <spring.session.version>2.7.4</spring.session.version>
     </properties>
 
     <dependencies>
@@ -29,6 +31,45 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+            <version>${spring.session.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <version>12.28.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.13.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.8.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-data-appconfiguration</artifactId>
+            <version>1.7.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-messaging-servicebus</artifactId>
+            <version>7.17.7</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-starter-active-directory</artifactId>
+            <version>${azure.sdk.version}</version>
         </dependency>
         <!-- SECURITY VIOLATION: log4j 2.14.1 has critical CVE-2021-44228 (Log4Shell) -->
         <dependency>
