@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BookingController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">BookingController.java</span></div><h1>BookingController.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.*;
+
+// Updated from javax.servlet.http.HttpSession to jakarta.servlet.http.HttpSession
+// (JAVA8_TO_21_JAKARTA_EE_MIGRATION): javax.* packages removed in Java 17 / Spring Boot 3.x
+import java.util.HashMap;
+import java.util.Map;
+
+@RestController
+@RequestMapping(&quot;/api/bookings&quot;)
+<span class="fc" id="L14">public class BookingController {</span>
+
+    @Autowired
+    private BookingService bookingService;
+
+    // FIX cr-java-0067 [Cloud Compatibility / Mandatory]: Removed static in-memory cache.
+    // Instance-local caches break horizontal scaling — cache entries on instance A are
+    // invisible to instance B. For distributed caching, use Redis (AWS ElastiCache) or
+    // a similar shared cache layer injected via Spring Cache abstraction.
+
+    // FIX cr-java-0088 [Cloud Compatibility / Mandatory]: Inventory service URL externalised
+    // to application.properties / environment variable and changed to HTTPS.
+    @Value(&quot;${app.inventory.endpoint:https://inventory-svc.internal/rooms}&quot;)
+    private String inventoryEndpoint;
+
+    /**
+     * Creates a new booking and returns the confirmed booking details.
+     *
+     * &lt;p&gt;FIX cr-java-0065 [Cloud Compatibility / Mandatory]: Booking state is no longer
+     * stored in the HTTP session. AWS ALB distributes requests across EC2 instances —
+     * session data on instance A is invisible to instance B, causing failures on
+     * auto-scaling and failover. State is returned directly in the response body instead.&lt;/p&gt;
+     *
+     * @param guestName Guest's full name.
+     * @param roomType  Room category (STANDARD, DELUXE, SUITE, VILLA).
+     * @param checkIn   Check-in date (yyyy-MM-dd).
+     * @param checkOut  Check-out date (yyyy-MM-dd).
+     * @return Confirmed booking details.
+     */
+    @PostMapping(&quot;/create&quot;)
+    public Map&lt;String, Object&gt; createBooking(
+            @RequestParam String guestName,
+            @RequestParam String roomType,
+            @RequestParam String checkIn,
+            @RequestParam String checkOut) {
+
+<span class="fc" id="L50">        Map&lt;String, Object&gt; booking = bookingService.createBooking(guestName, roomType, checkIn, checkOut);</span>
+
+        // FIX cr-java-0065: Session attributes removed. Booking state is returned in the
+        // response body; callers should persist state client-side or via a shared store.
+        // FIX cr-java-0067: Static in-memory bookingCache removed. Use a distributed
+        // cache (e.g. Redis / AWS ElastiCache) for cross-instance state sharing.
+
+<span class="fc" id="L57">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L58">        response.put(&quot;status&quot;, &quot;confirmed&quot;);</span>
+<span class="fc" id="L59">        response.put(&quot;booking&quot;, booking);</span>
+<span class="fc" id="L60">        return response;</span>
+    }
+
+    /**
+     * Returns the current status of a booking by its ID.
+     *
+     * &lt;p&gt;FIX cr-java-0065: Session dependency removed. The booking is looked up directly
+     * from the persistent store via {@link BookingService#getBookingById(String)}.&lt;/p&gt;
+     *
+     * @param bookingId Unique booking identifier.
+     * @return Booking status and details.
+     */
+    @GetMapping(&quot;/status/{bookingId}&quot;)
+    public Map&lt;String, Object&gt; getBookingStatus(@PathVariable String bookingId) {
+        // FIX cr-java-0065: Removed session.getAttribute(&quot;guestName&quot;) — reading business
+        // state from HTTP session fails on any other instance in the cluster.
+<span class="fc" id="L76">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L77">        result.put(&quot;bookingId&quot;, bookingId);</span>
+<span class="fc" id="L78">        result.put(&quot;details&quot;, bookingService.getBookingById(bookingId));</span>
+<span class="fc" id="L79">        return result;</span>
+    }
+
+    /**
+     * Checks room availability for the requested room type.
+     *
+     * &lt;p&gt;FIX cr-java-0088: Inventory service URL changed to HTTPS and externalised to
+     * an environment variable / application.properties.&lt;/p&gt;
+     *
+     * @param roomType Room category to check.
+     * @return Availability status and inventory endpoint used.
+     */
+    @GetMapping(&quot;/availability&quot;)
+    public Map&lt;String, Object&gt; checkAvailability(@RequestParam String roomType) {
+        // FIX cr-java-0088: Plain HTTP URL replaced with HTTPS endpoint sourced from
+        // injected property — complies with AWS WAF and Well-Architected security review.
+<span class="fc" id="L95">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L96">        response.put(&quot;roomType&quot;, roomType);</span>
+<span class="fc" id="L97">        response.put(&quot;inventoryEndpoint&quot;, inventoryEndpoint);</span>
+<span class="fc" id="L98">        response.put(&quot;available&quot;, bookingService.isRoomAvailable(roomType));</span>
+<span class="fc" id="L99">        return response;</span>
+    }
+
+    /**
+     * Returns a download reference for a monthly booking report.
+     *
+     * &lt;p&gt;FIX czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute file path
+     * removed. Report path is now resolved from the externalised {@code app.report.base-path}
+     * property so it works inside container images and cloud environments.&lt;/p&gt;
+     *
+     * @param month Month identifier for the report (e.g. &quot;2024-03&quot;).
+     * @return Report path reference and generation message.
+     */
+    @GetMapping(&quot;/report/download&quot;)
+    public Map&lt;String, Object&gt; downloadReport(@RequestParam String month) {
+        // FIX czr-java-001: Hardcoded /var/legacy/reports/ path removed.
+        // Report path is now constructed using the externalised base-path property
+        // injected into BookingService / ReportService.
+<span class="fc" id="L117">        Map&lt;String, Object&gt; response = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L118">        response.put(&quot;message&quot;, bookingService.generateReport(month));</span>
+<span class="fc" id="L119">        return response;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

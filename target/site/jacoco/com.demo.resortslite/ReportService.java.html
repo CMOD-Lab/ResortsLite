@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">ReportService.java</span></div><h1>ReportService.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+// Updated from java.util.Date / java.text.SimpleDateFormat to java.time API
+// (JAVA8_TO_21_DATE_TIME_CHANGES): Legacy date/time APIs replaced with java.time for
+// thread safety and Java 17 best practices. SimpleDateFormat is not thread-safe;
+// DateTimeFormatter is immutable and thread-safe.
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+<span class="fc" id="L19">public class ReportService {</span>
+
+    // FIX czr-java-001 [Software Portability / Mandatory]: Hardcoded absolute paths removed.
+    // Report base path is now externalised to an environment variable / application.properties
+    // so it resolves correctly inside Docker containers, ECS tasks, and cloud environments.
+    // In production, set REPORT_BASE_PATH to an S3-mounted volume or object-storage path.
+    @Value(&quot;${app.report.base-path:/tmp/reports/}&quot;)
+    private String reportBasePath;
+
+    // FIX czr-java-001: Windows-style hardcoded backup path removed.
+    // Backup destination is now externalised to an environment variable.
+    @Value(&quot;${app.backup.path:/tmp/backups/}&quot;)
+    private String backupPath;
+
+    // FIX czr-port-001 [Software Portability / High]: Hardcoded server port removed from
+    // application logic. Port is now read from the environment / application.properties
+    // so container orchestration (ECS / EKS) can assign it dynamically.
+    @Value(&quot;${server.port:8080}&quot;)
+    private int serverPort;
+
+    // Thread-safe DateTimeFormatter (replaces non-thread-safe SimpleDateFormat)
+<span class="fc" id="L40">    private static final DateTimeFormatter TIMESTAMP_FORMATTER =</span>
+<span class="fc" id="L41">            DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss&quot;);</span>
+
+    /**
+     * Generates a monthly booking report CSV file.
+     *
+     * &lt;p&gt;FIX czr-java-001: Report directory is resolved from the externalised
+     * {@code app.report.base-path} property rather than a hardcoded absolute path.&lt;/p&gt;
+     *
+     * @param month Month identifier (e.g. &quot;03&quot;).
+     * @param year  Year identifier (e.g. &quot;2024&quot;).
+     * @return Map containing generation status and output file path.
+     */
+    public Map&lt;String, Object&gt; generateMonthlyReport(String month, String year) {
+<span class="fc" id="L54">        String fileName = &quot;resort_report_&quot; + month + &quot;_&quot; + year + &quot;.csv&quot;;</span>
+<span class="fc" id="L55">        String fullPath = reportBasePath + fileName;</span>
+
+<span class="fc" id="L57">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+
+        try {
+<span class="fc" id="L60">            File reportDir = new File(reportBasePath);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (!reportDir.exists()) {</span>
+<span class="fc" id="L62">                reportDir.mkdirs();</span>
+            }
+
+<span class="fc" id="L65">            FileWriter writer = new FileWriter(fullPath);</span>
+<span class="fc" id="L66">            writer.write(&quot;BookingID,GuestName,RoomType,CheckIn,CheckOut,Amount\n&quot;);</span>
+<span class="fc" id="L67">            writer.write(&quot;BK-001,John Smith,SUITE,2024-03-01,2024-03-05,1750.00\n&quot;);</span>
+<span class="fc" id="L68">            writer.write(&quot;BK-002,Jane Doe,DELUXE,2024-03-03,2024-03-07,960.00\n&quot;);</span>
+<span class="fc" id="L69">            writer.close();</span>
+
+<span class="fc" id="L71">            result.put(&quot;status&quot;, &quot;generated&quot;);</span>
+<span class="fc" id="L72">            result.put(&quot;path&quot;, fullPath);</span>
+            // FIX czr-port-001: serverPort now sourced from injected property, not a
+            // hardcoded constant.
+<span class="fc" id="L75">            result.put(&quot;serverPort&quot;, serverPort);</span>
+
+<span class="fc" id="L77">        } catch (IOException e) {</span>
+<span class="fc" id="L78">            result.put(&quot;status&quot;, &quot;error&quot;);</span>
+<span class="fc" id="L79">            result.put(&quot;message&quot;, e.getMessage());</span>
+<span class="fc" id="L80">        }</span>
+
+<span class="fc" id="L82">        return result;</span>
+    }
+
+    /**
+     * Builds a secure HTTPS download URL for a named report file.
+     *
+     * &lt;p&gt;FIX cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL replaced with
+     * HTTPS. Cloud security standards (AWS WAF, ALB policies) enforce HTTPS for all
+     * internal and external service communication.&lt;/p&gt;
+     *
+     * @param reportName File name of the report to download.
+     * @return HTTPS download URL string.
+     */
+    public String buildReportDownloadUrl(String reportName) {
+        // FIX cr-java-0088: Changed scheme from http:// to https:// to comply with
+        // cloud security standards and AWS Well-Architected Framework requirements.
+<span class="fc" id="L98">        return &quot;https://reports.resorts-internal.com/download/&quot; + reportName;</span>
+    }
+
+    /**
+     * Returns current system / environment information for diagnostics.
+     *
+     * &lt;p&gt;FIX czr-java-001, czr-port-001: All values are now sourced from injected
+     * properties rather than hardcoded constants.&lt;/p&gt;
+     *
+     * @return Map of diagnostic key-value pairs.
+     */
+    public Map&lt;String, Object&gt; getSystemInfo() {
+        // Updated from new SimpleDateFormat(&quot;yyyy-MM-dd HH:mm:ss&quot;).format(new Date())
+        // to java.time.LocalDateTime (JAVA8_TO_21_DATE_TIME_CHANGES):
+        // - Thread-safe: DateTimeFormatter is immutable, SimpleDateFormat is not
+        // - No legacy java.util.Date dependency
+        // - Cleaner API aligned with Java 8+ best practices
+<span class="fc" id="L115">        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);</span>
+<span class="fc" id="L116">        Map&lt;String, Object&gt; info = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L117">        info.put(&quot;reportPath&quot;, reportBasePath);</span>
+<span class="fc" id="L118">        info.put(&quot;backupPath&quot;, backupPath);</span>
+<span class="fc" id="L119">        info.put(&quot;serverPort&quot;, serverPort);</span>
+<span class="fc" id="L120">        info.put(&quot;generatedAt&quot;, timestamp);</span>
+<span class="fc" id="L121">        return info;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
