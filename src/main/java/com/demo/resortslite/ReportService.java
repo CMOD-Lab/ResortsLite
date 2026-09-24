@@ -5,8 +5,12 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+// Updated from java.util.Date / java.text.SimpleDateFormat to java.time API
+// (JAVA8_TO_21_DATE_TIME_CHANGES): Legacy date/time APIs replaced with java.time for
+// thread safety and Java 17 best practices. SimpleDateFormat is not thread-safe;
+// DateTimeFormatter is immutable and thread-safe.
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,6 +30,10 @@ public class ReportService {
     // Container orchestration (ECS / EKS) dynamically assigns ports. Hardcoded ports prevent
     // dynamic port binding required for modern container deployment and service discovery.
     private static final int SERVER_PORT = 8080; // czr-port-001
+
+    // Thread-safe DateTimeFormatter (replaces non-thread-safe SimpleDateFormat)
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public Map<String, Object> generateMonthlyReport(String month, String year) {
         String fileName = "resort_report_" + month + "_" + year + ".csv";
@@ -67,7 +75,12 @@ public class ReportService {
     }
 
     public Map<String, Object> getSystemInfo() { // doc-missing-001
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        // Updated from new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
+        // to java.time.LocalDateTime (JAVA8_TO_21_DATE_TIME_CHANGES):
+        // - Thread-safe: DateTimeFormatter is immutable, SimpleDateFormat is not
+        // - No legacy java.util.Date dependency
+        // - Cleaner API aligned with Java 8+ best practices
+        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
         Map<String, Object> info = new HashMap<>();
         info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
         info.put("backupPath", BACKUP_PATH);        // czr-java-001
