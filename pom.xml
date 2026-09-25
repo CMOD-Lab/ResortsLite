@@ -47,6 +47,69 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- cr-java-0061 FIX: Azure Blob Storage SDK for replacing hard-coded file paths -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <version>12.25.1</version>
+        </dependency>
+        <!-- cr-java-0111 FIX: Azure Service Bus SDK for replacing java.util.Timer and
+             server-local scheduling with Azure Service Bus Scheduled Messages.
+             Enables distributed, timezone-agnostic task scheduling across cloud regions. -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-messaging-servicebus</artifactId>
+            <version>7.15.1</version>
+        </dependency>
+        <!-- cr-java-0069 FIX: Azure Key Vault SDK for replacing hard-coded database credentials -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.8.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.11.1</version>
+        </dependency>
+        <!-- cr-java-0071 FIX: Azure App Configuration SDK for externalizing hard-coded
+             environment URLs (BookingController line 66, ReportService line 66) -->
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-appconfiguration-config</artifactId>
+            <version>4.14.0</version>
+        </dependency>
+        <!-- cr-java-0065 FIX: Spring Session Data Redis + Spring Data Redis for
+             externalising HTTP session state to Azure Cache for Redis, enabling
+             stateless horizontal scaling across multiple application instances. -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- cr-java-0090 FIX: Spring Security + Azure Active Directory (Entra ID) starter
+             for replacing file-based authentication with centralized Azure AD identity
+             management using MSAL and Spring Security OAuth2 JWT validation. -->
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-starter-active-directory</artifactId>
+            <version>4.14.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-resource-server</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
