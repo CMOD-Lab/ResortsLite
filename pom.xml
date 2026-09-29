@@ -47,6 +47,62 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Azure Blob Storage SDK — replaces hard-coded file paths (cr-java-0061) -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <version>12.25.1</version>
+        </dependency>
+        <!-- Azure Key Vault Secrets SDK — replaces hard-coded DB credentials (cr-java-0069) -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.8.2</version>
+        </dependency>
+        <!-- Azure Identity SDK — provides DefaultAzureCredential for Key Vault auth -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.11.2</version>
+        </dependency>
+        <!-- cr-java-0090: Spring Security — provides the security filter chain and
+             authentication/authorization infrastructure required by Azure AD integration. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!-- cr-java-0090: Spring Cloud Azure Active Directory starter — integrates Azure
+             Active Directory (Entra ID) with Spring Security. Replaces file-based credential
+             storage and local MD5 token generation with centralized, scalable AAD identity
+             management using OAuth 2.0 / OIDC and MSAL under the hood. -->
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-starter-active-directory</artifactId>
+            <version>5.10.0</version>
+        </dependency>
+        <!-- cr-java-0065: Spring Data Redis — provides StringRedisTemplate used to replace
+             HttpSession-based state storage with Azure Cache for Redis. Enables stateless
+             application instances and safe horizontal scaling. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- cr-java-0065: Spring Session Data Redis — transparently backs HttpSession with
+             Redis so that any remaining Spring Security / filter-chain session handling is
+             also distributed across Azure Cache for Redis replicas. -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+        <!-- cr-java-0111: Azure Service Bus — replaces java.util.Timer / server-local
+             clock dependencies with distributed, timezone-agnostic scheduled message
+             delivery. Enables cloud-native task scheduling across multiple regions and
+             container replicas without relying on server-local timezone settings. -->
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-starter-servicebus</artifactId>
+            <version>5.10.0</version>
+        </dependency>
     </dependencies>
 
     <build>
