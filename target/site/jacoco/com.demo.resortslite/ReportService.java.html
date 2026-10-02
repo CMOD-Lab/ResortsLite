@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">ReportService.java</span></div><h1>ReportService.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Service for generating and managing resort reports.
+ * Updated for Java 21 / Spring Boot 3 compatibility:
+ * - Replaced legacy java.util.Date and SimpleDateFormat with java.time.LocalDateTime
+ *   and java.time.format.DateTimeFormatter (available since Java 8, preferred in Java 21).
+ * - Externalised hardcoded filesystem paths to environment variables.
+ * - Replaced hardcoded HTTP report URL with HTTPS and environment-variable-driven base URL.
+ */
+@Service
+<span class="fc" id="L22">public class ReportService {</span>
+
+    // Externalised from hardcoded /var/legacy/reports/ — use environment variable or
+    // cloud object storage (S3 / Azure Blob) in production.
+    private static final String REPORT_BASE_PATH =
+<span class="fc" id="L27">            System.getenv().getOrDefault(&quot;REPORT_BASE_PATH&quot;, &quot;/tmp/reports&quot;);</span>
+
+    // Externalised from hardcoded Windows path C:\ResortBackups\nightly\
+    private static final String BACKUP_PATH =
+<span class="fc" id="L31">            System.getenv().getOrDefault(&quot;BACKUP_PATH&quot;, &quot;/tmp/resort-backups&quot;);</span>
+
+    // Server port externalised — container orchestration (ECS/EKS) assigns ports dynamically.
+    private static final int SERVER_PORT =
+<span class="fc" id="L35">            Integer.parseInt(System.getenv().getOrDefault(&quot;SERVER_PORT&quot;, &quot;8080&quot;));</span>
+
+    // DateTimeFormatter is thread-safe (unlike SimpleDateFormat) and part of java.time API.
+<span class="fc" id="L38">    private static final DateTimeFormatter TIMESTAMP_FORMATTER =</span>
+<span class="fc" id="L39">            DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss&quot;);</span>
+
+    /**
+     * Generates a monthly booking report as a CSV file.
+     *
+     * @param month the month (e.g., &quot;03&quot;)
+     * @param year  the year (e.g., &quot;2024&quot;)
+     * @return a map containing the generation status and file path
+     */
+    public Map&lt;String, Object&gt; generateMonthlyReport(String month, String year) {
+<span class="fc" id="L49">        String fileName = &quot;resort_report_&quot; + month + &quot;_&quot; + year + &quot;.csv&quot;;</span>
+<span class="fc" id="L50">        String fullPath = REPORT_BASE_PATH + File.separator + fileName;</span>
+
+<span class="fc" id="L52">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+
+        try {
+<span class="fc" id="L55">            File reportDir = new File(REPORT_BASE_PATH);</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">            if (!reportDir.exists()) {</span>
+<span class="nc" id="L57">                reportDir.mkdirs();</span>
+            }
+
+<span class="fc" id="L60">            try (FileWriter writer = new FileWriter(fullPath)) {</span>
+<span class="fc" id="L61">                writer.write(&quot;BookingID,GuestName,RoomType,CheckIn,CheckOut,Amount\n&quot;);</span>
+<span class="fc" id="L62">                writer.write(&quot;BK-001,John Smith,SUITE,2024-03-01,2024-03-05,1750.00\n&quot;);</span>
+<span class="fc" id="L63">                writer.write(&quot;BK-002,Jane Doe,DELUXE,2024-03-03,2024-03-07,960.00\n&quot;);</span>
+            }
+
+<span class="fc" id="L66">            result.put(&quot;status&quot;, &quot;generated&quot;);</span>
+<span class="fc" id="L67">            result.put(&quot;path&quot;, fullPath);</span>
+<span class="fc" id="L68">            result.put(&quot;serverPort&quot;, SERVER_PORT);</span>
+
+<span class="nc" id="L70">        } catch (IOException e) {</span>
+<span class="nc" id="L71">            result.put(&quot;status&quot;, &quot;error&quot;);</span>
+<span class="nc" id="L72">            result.put(&quot;message&quot;, e.getMessage());</span>
+<span class="fc" id="L73">        }</span>
+
+<span class="fc" id="L75">        return result;</span>
+    }
+
+    /**
+     * Builds the download URL for a given report file.
+     * Uses HTTPS and an environment-variable-driven base URL for cloud compatibility.
+     *
+     * @param reportName the name of the report file
+     * @return the full HTTPS download URL
+     */
+    public String buildReportDownloadUrl(String reportName) {
+        // Replaced hardcoded HTTP URL with HTTPS and environment-variable-driven base URL.
+<span class="fc" id="L87">        String baseUrl = System.getenv().getOrDefault(</span>
+                &quot;REPORT_DOWNLOAD_BASE_URL&quot;, &quot;https://reports.resorts-internal.com/download&quot;);
+<span class="fc" id="L89">        return baseUrl + &quot;/&quot; + reportName;</span>
+    }
+
+    /**
+     * Returns system information including report paths and current timestamp.
+     *
+     * @return a map of system information key-value pairs
+     */
+    public Map&lt;String, Object&gt; getSystemInfo() {
+        // Replaced java.util.Date + SimpleDateFormat with java.time.LocalDateTime +
+        // DateTimeFormatter — thread-safe and idiomatic in Java 21.
+<span class="fc" id="L100">        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);</span>
+
+<span class="fc" id="L102">        Map&lt;String, Object&gt; info = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L103">        info.put(&quot;reportPath&quot;, REPORT_BASE_PATH);</span>
+<span class="fc" id="L104">        info.put(&quot;backupPath&quot;, BACKUP_PATH);</span>
+<span class="fc" id="L105">        info.put(&quot;serverPort&quot;, SERVER_PORT);</span>
+<span class="fc" id="L106">        info.put(&quot;generatedAt&quot;, timestamp);</span>
+<span class="fc" id="L107">        return info;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
