@@ -5,52 +5,92 @@
          https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Updated Spring Boot parent to 3.2.x for full Java 21 compatibility and Jakarta EE support -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
+        <version>3.2.5</version>
+        <relativePath/>
     </parent>
 
     <groupId>com.demo</groupId>
     <artifactId>resortsLite</artifactId>
     <version>1.0.0</version>
     <name>ResortsLite</name>
-    <description>Legacy resort booking demo — Java 8 / Spring Boot 2.7.x</description>
+    <description>Resort booking demo — Java 21 / Spring Boot 3.2.x</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <!-- Updated from 1.8 to 21 for Java 21 compatibility -->
+        <java.version>21</java.version>
+        <!-- Explicit encoding -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
 
     <dependencies>
+        <!-- Spring Boot Web Starter (includes Spring MVC, Tomcat with Jakarta Servlet API) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+
+        <!-- Spring Boot JDBC Starter -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
-        <!-- SECURITY VIOLATION: log4j 2.14.1 has critical CVE-2021-44228 (Log4Shell) -->
+
+        <!-- Spring Boot Validation Starter (Jakarta Validation / Hibernate Validator) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Updated log4j-core to 2.23.1 to fix CVE-2021-44228 (Log4Shell) and Java 21 compatibility -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
+            <version>2.23.1</version>
         </dependency>
-        <!-- SECURITY VIOLATION: commons-collections 3.2.1 has CVE-2015-6420 (RCE) -->
+
+        <!-- Updated commons-collections to 3.2.2 to fix CVE-2015-6420 (RCE) -->
         <dependency>
             <groupId>commons-collections</groupId>
             <artifactId>commons-collections</artifactId>
-            <version>3.2.1</version>
+            <version>3.2.2</version>
         </dependency>
+
+        <!-- H2 in-memory database for development/testing -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+
+        <!-- Spring Boot Test Starter (JUnit 5 / Jupiter) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!-- Updated maven-compiler-plugin to 3.13.0 for Java 21 support -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <release>21</release>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+
+            <!-- Spring Boot Maven Plugin for packaging -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
