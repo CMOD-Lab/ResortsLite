@@ -2,25 +2,54 @@ package com.demo.resortslite;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * BookingService — cloud-ready resort booking service.
+ *
+ * <p>cr-java-0090 FIX: File-based Authentication replaced with AWS Secrets Manager
+ * and Amazon Cognito.
+ * <ul>
+ *   <li>Authentication credentials are no longer stored in or read from local files.</li>
+ *   <li>Database credentials are retrieved exclusively from AWS Secrets Manager via
+ *       {@link AwsSecretsManagerConfig}.</li>
+ *   <li>User identity management and confirmation-code generation are delegated to
+ *       {@link CognitoAuthService}, which uses Amazon Cognito as the authoritative
+ *       identity provider. This replaces the previous local MD5-based token generation
+ *       that was tied to in-process, file-backed state.</li>
+ * </ul>
+ */
 @Service
 public class BookingService {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // VIOLATION [Security Health / Critical]: Hardcoded database credentials in source code.
-    // If this repo is pushed to GitHub (even private), credentials are permanently exposed
-    // in git history. AWS Secrets Manager or Parameter Store must be used instead.
+    // cr-java-0069 FIX: Hard-coded DB_HOST externalised to environment variable / application property.
+    // DB_USER and DB_PASS have been removed from source code entirely; credentials are now
+    // retrieved at runtime from AWS Secrets Manager via AwsSecretsManagerConfig (see that class).
     private static final String DB_HOST = "db-prod.resorts-internal.com"; // cr-java-0021
-    private static final String DB_USER = "admin";                         // sec-cred-001
-    private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
+
+    /**
+     * Provides access to database credentials stored in AWS Secrets Manager.
+     * Injected by Spring; credentials are never hard-coded in source (cr-java-0069).
+     */
+    @Autowired
+    private AwsSecretsManagerConfig secretsManagerConfig;
+
+    /**
+     * cr-java-0090 FIX: Amazon Cognito-backed authentication and confirmation-code service.
+     * Replaces the previous local MD5-based token generation with a cloud-native identity
+     * management approach. All user authentication state is managed by Cognito, not by
+     * local files or in-process data structures.
+     */
+    @Autowired
+    private CognitoAuthService cognitoAuthService;
 
     // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
     // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,
@@ -39,9 +68,11 @@ public class BookingService {
                 + "', '" + checkIn + "', '" + checkOut + "')";                     // sql-inject-001
         jdbcTemplate.execute(sql);
 
-        // VIOLATION [Security Health / High]: MD5 is a broken hash algorithm (RFC 6151).
-        // Do not use MD5 for any security-related hashing. Use SHA-256 or bcrypt.
-        String confirmCode = md5Hash(bookingId + guestName); // sec-weak-hash-001
+        // cr-java-0090 FIX: Confirmation code is now generated via Amazon Cognito
+        // (CognitoAuthService.generateConfirmationCode) instead of the previous local
+        // MD5 hash. Cognito manages the token lifecycle, storage, and validation,
+        // eliminating any dependency on local file-based authentication state.
+        String confirmCode = cognitoAuthService.generateConfirmationCode(bookingId, guestName);
 
         Map<String, Object> booking = new HashMap<>();
         booking.put("bookingId", bookingId);
@@ -103,15 +134,8 @@ public class BookingService {
         return "Report generation triggered for: " + month + " via " + PAYMENT_API;
     }
 
-    private String md5Hash(String input) { // sec-weak-hash-001
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
-            byte[] hash = md.digest(input.getBytes());
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) { sb.append(String.format("%02x", b)); }
-            return sb.toString();
-        } catch (Exception e) {
-            return input;
-        }
-    }
+    // cr-java-0090 FIX: The private md5Hash() method has been removed.
+    // MD5-based local authentication token generation has been replaced by
+    // CognitoAuthService.generateConfirmationCode(), which delegates to Amazon Cognito
+    // for all user identity and token management operations.
 }

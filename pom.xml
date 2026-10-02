@@ -19,7 +19,23 @@
 
     <properties>
         <java.version>1.8</java.version>
+        <aws.sdk.version>2.25.60</aws.sdk.version>
+        <!-- Spring Cloud AWS 2.4.x is compatible with Spring Boot 2.7.x -->
+        <spring-cloud-aws.version>2.4.4</spring-cloud-aws.version>
     </properties>
+
+    <!-- AWS SDK v2 BOM — manages versions for all AWS SDK v2 modules (cr-java-0062) -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -46,6 +62,79 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <!-- AWS SDK v2 S3 — replaces local FileWriter write operations with durable S3 storage (cr-java-0062) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <!-- version managed by AWS SDK BOM in dependencyManagement -->
+        </dependency>
+        <!-- AWS SDK v2 Secrets Manager — replaces hard-coded DB credentials (cr-java-0069) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>secretsmanager</artifactId>
+            <!-- version managed by AWS SDK BOM in dependencyManagement -->
+        </dependency>
+        <!-- AWS SDK v2 SSM — used by Spring Cloud AWS Parameter Store integration (cr-java-0071) -->
+        <!--
+            cr-java-0090 FIX: Amazon Cognito Identity Provider SDK v2
+            Provides the CognitoIdentityProviderClient used by CognitoAuthService to perform
+            cloud-native user identity management (adminGetUser, etc.) against an Amazon Cognito
+            User Pool. Replaces file-based authentication and local MD5 token generation with
+            a centrally managed, auditable, and scalable identity provider.
+        -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>cognitoidentityprovider</artifactId>
+            <!-- version managed by AWS SDK BOM in dependencyManagement -->
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssm</artifactId>
+            <!-- version managed by AWS SDK BOM in dependencyManagement -->
+        </dependency>
+        <!-- AWS SDK v2 URL Connection HTTP client required by S3 client (cr-java-0062) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+            <!-- version managed by AWS SDK BOM in dependencyManagement -->
+        </dependency>
+        <!--
+            Spring Cloud AWS Parameter Store Config (cr-java-0071):
+            Enables loading of application properties from AWS Systems Manager Parameter Store.
+            Environment-specific URLs (inventory endpoint, report download base URL) are stored
+            under /resortslite/ in SSM and injected into @Value fields at application startup,
+            replacing all hard-coded environment-specific URLs.
+            Configure: spring.config.import=aws-parameterstore:/resortslite/
+        -->
+        <dependency>
+            <groupId>io.awspring.cloud</groupId>
+            <artifactId>spring-cloud-aws-parameter-store-config</artifactId>
+            <version>${spring-cloud-aws.version}</version>
+        </dependency>
+        <!--
+            cr-java-0065 FIX: Spring Session Data Redis — Amazon ElastiCache for Redis
+            Replaces in-process HttpSession with a centralised, distributed session store
+            backed by Amazon ElastiCache for Redis. All session attributes (lastBooking,
+            guestName) are stored in Redis, enabling stateless application instances and
+            horizontal scaling without sticky sessions on the AWS ALB.
+            Requires: spring.session.store-type=redis and ElastiCache endpoint properties.
+        -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+            <!-- version managed by spring-boot-starter-parent BOM -->
+        </dependency>
+        <!--
+            cr-java-0065 FIX: Spring Boot Starter Data Redis (Lettuce client)
+            Provides the Lettuce Redis client and auto-configuration for connecting to
+            Amazon ElastiCache. Lettuce supports ElastiCache cluster mode, TLS, and
+            connection pooling required for production cloud deployments.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+            <!-- version managed by spring-boot-starter-parent BOM -->
         </dependency>
     </dependencies>
 
