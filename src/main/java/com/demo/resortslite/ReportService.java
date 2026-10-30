@@ -5,8 +5,11 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+// Updated from legacy java.util.Date / java.text.SimpleDateFormat to java.time API
+// java.util.Date and SimpleDateFormat are not thread-safe and are superseded by java.time in Java 8+
+// Java 17 best practice: use java.time.LocalDateTime and DateTimeFormatter
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -67,7 +70,10 @@ public class ReportService {
     }
 
     public Map<String, Object> getSystemInfo() { // doc-missing-001
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        // Updated from new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
+        // to java.time.LocalDateTime + DateTimeFormatter — thread-safe, Java 17 idiomatic
+        String timestamp = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         Map<String, Object> info = new HashMap<>();
         info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
         info.put("backupPath", BACKUP_PATH);        // czr-java-001
