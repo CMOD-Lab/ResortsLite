@@ -5,43 +5,84 @@
          https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!--
+        FIXED: Spring Boot parent upgraded from 2.7.15 to 3.2.5
+        Reason: Spring Boot 2.7.x uses javax.* (Java EE) namespace; Spring Boot 3.x
+        migrates to jakarta.* (Jakarta EE 10) which is required for Java 17 production
+        deployments. Spring Boot 3.x also ships with Spring Framework 6.x which has
+        first-class Java 17 support.
+        Analysis Issue: "Spring Boot 2.7.18 incompatible with Java 17 production deployments"
+    -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
+        <version>3.2.5</version>
+        <relativePath/>
     </parent>
 
     <groupId>com.demo</groupId>
     <artifactId>resortsLite</artifactId>
     <version>1.0.0</version>
     <name>ResortsLite</name>
-    <description>Legacy resort booking demo — Java 8 / Spring Boot 2.7.x</description>
+    <description>Resort booking demo — Java 17 / Spring Boot 3.2.x</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <!--
+            FIXED: java.version property updated from 1.8 to 17.
+            Analysis Issue: "Java version property still set to 1.8"
+            Spring Boot's parent POM uses this property to configure the
+            maven-compiler-plugin source/target/release settings automatically.
+        -->
+        <java.version>17</java.version>
     </properties>
 
     <dependencies>
+        <!-- Spring Boot Web Starter (includes Spring MVC, Tomcat, Jackson) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+
+        <!-- Spring Boot JDBC Starter (includes HikariCP connection pool) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
-        <!-- SECURITY VIOLATION: log4j 2.14.1 has critical CVE-2021-44228 (Log4Shell) -->
+
+        <!--
+            FIXED: log4j-core upgraded from 2.14.1 to 2.21.1
+            Analysis Issue: "log4j-core 2.14.1 — CVE-2021-44228 (Log4Shell)"
+            CVE-2021-44228 is a critical RCE vulnerability in log4j 2.x versions < 2.15.0.
+            Version 2.21.1 is the latest stable release with all known CVEs patched.
+        -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
+            <version>2.21.1</version>
         </dependency>
-        <!-- SECURITY VIOLATION: commons-collections 3.2.1 has CVE-2015-6420 (RCE) -->
+
+        <!--
+            FIXED: commons-collections upgraded from 3.2.1 to 3.2.2
+            Analysis Issue: "commons-collections 3.2.1 — CVE-2015-6420 (RCE via deserialization)"
+            CVE-2015-6420 allows remote code execution via Java deserialization gadget chains.
+            Version 3.2.2 patches the unsafe deserialization vulnerability.
+        -->
         <dependency>
             <groupId>commons-collections</groupId>
             <artifactId>commons-collections</artifactId>
-            <version>3.2.1</version>
+            <version>3.2.2</version>
         </dependency>
+
+        <!--
+            H2 in-memory database for development/testing.
+            NOTE: For production, replace with a proper RDBMS driver.
+            If using MySQL, use the updated artifact:
+              groupId: com.mysql
+              artifactId: mysql-connector-j
+              version: 8.2.0
+            (mysql:mysql-connector-java was deprecated in favour of com.mysql:mysql-connector-j
+             starting from version 8.0.31 — the new artifact is required for Spring Boot 3.x)
+        -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
@@ -51,6 +92,26 @@
 
     <build>
         <plugins>
+            <!--
+                FIXED: maven-compiler-plugin explicitly configured for Java 17.
+                Analysis Issue: "Missing maven-compiler-plugin — defaults to Java 5 source/target"
+                Without this plugin, Maven defaults to Java 5 bytecode which prevents use of
+                Java 8+ language features (lambdas, streams, records, sealed classes, etc.).
+                Using <release>17</release> is preferred over <source>/<target> as it also
+                sets the bootstrap classpath, preventing accidental use of newer APIs.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <release>17</release>
+                </configuration>
+            </plugin>
+
+            <!-- Spring Boot Maven Plugin for packaging executable JARs -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

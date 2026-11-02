@@ -3,7 +3,18 @@ package com.demo.resortslite;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpSession;
+/*
+ * FIXED: javax.servlet.http.HttpSession → jakarta.servlet.http.HttpSession
+ * Analysis Issue: "javax.servlet.http.HttpSession import must be jakarta.servlet.http.HttpSession"
+ * Analysis Issue: "Transitive javax.* usage via Spring Boot 2.7 auto-configuration"
+ *
+ * Spring Boot 3.x (Spring Framework 6.x) migrates from Java EE (javax.*) to
+ * Jakarta EE 10 (jakarta.*). All javax.servlet.* imports must be updated to
+ * jakarta.servlet.* for compatibility with Java 17 / Spring Boot 3.x.
+ * This is a breaking change — the old javax.servlet package is no longer on the
+ * classpath when using Spring Boot 3.x / Tomcat 10.x.
+ */
+import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 

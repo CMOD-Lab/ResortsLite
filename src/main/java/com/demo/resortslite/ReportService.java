@@ -5,8 +5,27 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+
+/*
+ * FIXED: java.util.Date and SimpleDateFormat replaced with java.time API
+ * Analysis Issue: "Legacy java.util.Date and SimpleDateFormat usage" (line 12)
+ *
+ * java.util.Date and SimpleDateFormat have well-known design flaws:
+ *   - java.util.Date is mutable and not thread-safe
+ *   - SimpleDateFormat is not thread-safe (shared instances cause data corruption)
+ *   - Both are effectively deprecated in favour of java.time (JSR-310, Java 8+)
+ *
+ * Replacements used:
+ *   - java.util.Date          → java.time.LocalDateTime
+ *   - SimpleDateFormat        → java.time.format.DateTimeFormatter
+ *   - new Date()              → LocalDateTime.now()
+ *   - sdf.format(new Date())  → LocalDateTime.now().format(DateTimeFormatter.ofPattern(...))
+ *
+ * DateTimeFormatter instances are immutable and thread-safe, making them safe
+ * for use as static constants or shared fields.
+ */
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,6 +46,13 @@ public class ReportService {
     // dynamic port binding required for modern container deployment and service discovery.
     private static final int SERVER_PORT = 8080; // czr-port-001
 
+    /**
+     * Generates a monthly booking report CSV file.
+     *
+     * @param month the month identifier (e.g. "03")
+     * @param year  the four-digit year (e.g. "2024")
+     * @return a map containing the generation status and output file path
+     */
     public Map<String, Object> generateMonthlyReport(String month, String year) {
         String fileName = "resort_report_" + month + "_" + year + ".csv";
         String fullPath = REPORT_BASE_PATH + fileName; // czr-java-001
@@ -57,17 +83,41 @@ public class ReportService {
         return result;
     }
 
-    // VIOLATION [Code Sustainability / Medium]: No JavaDoc or method documentation.
-    // Missing documentation is flagged across all public methods in the codebase.
-    // This increases onboarding time and transformation risk for automated tools.
+    /**
+     * Builds the download URL for a named report file.
+     *
+     * @param reportName the report file name
+     * @return the full download URL string
+     */
     public String buildReportDownloadUrl(String reportName) { // doc-missing-001
         // VIOLATION cr-java-0088 [Cloud Compatibility / Mandatory]: Plain HTTP URL
         // hardcoded for report download. Cloud security standards enforce HTTPS.
         return "http://reports.resorts-internal.com:8080/download/" + reportName; // cr-java-0088
     }
 
-    public Map<String, Object> getSystemInfo() { // doc-missing-001
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+    /**
+     * Returns system information including configured paths and the current timestamp.
+     *
+     * <p>FIXED: java.util.Date / SimpleDateFormat replaced with java.time.LocalDateTime
+     * and DateTimeFormatter per JAVA8_TO_21_DATE_TIME_CHANGES rule.
+     * java.time API is immutable, thread-safe, and the recommended approach from Java 8+.</p>
+     *
+     * @return a map of system information key-value pairs
+     */
+    public Map<String, Object> getSystemInfo() {
+        /*
+         * FIXED: Replaced:
+         *   SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+         *   String timestamp = sdf.format(new Date());
+         * With:
+         *   String timestamp = LocalDateTime.now()
+         *       .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+         *
+         * DateTimeFormatter is thread-safe; SimpleDateFormat is not.
+         */
+        String timestamp = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
         Map<String, Object> info = new HashMap<>();
         info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
         info.put("backupPath", BACKUP_PATH);        // czr-java-001
