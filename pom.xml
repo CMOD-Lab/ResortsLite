@@ -19,7 +19,22 @@
 
     <properties>
         <java.version>1.8</java.version>
+        <!-- AWS SDK v2 BOM version — manages all aws-sdk-java-v2 module versions -->
+        <aws.sdk.version>2.25.40</aws.sdk.version>
     </properties>
+
+    <!-- AWS SDK v2 Bill of Materials — keeps all SDK module versions in sync -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -46,6 +61,50 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- AWS SDK v2 — Amazon S3 client (cr-java-0061: replace hard-coded file paths) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+        </dependency>
+        <!-- AWS SDK v2 — URL connection HTTP client required by SDK v2 on Java 8 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+        </dependency>
+        <!-- AWS SDK v2 — Secrets Manager client (cr-java-0069: replace hard-coded DB credentials) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>secretsmanager</artifactId>
+        </dependency>
+        <!-- AWS SDK v2 — SSM Parameter Store client (cr-java-0071: replace hard-coded environment URLs) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssm</artifactId>
+        </dependency>
+
+        <!-- cr-java-0065 FIX: Spring Session Data Redis — stores HTTP session state in
+             Amazon ElastiCache for Redis instead of the in-process servlet container.
+             Enables stateless application instances and horizontal scaling without
+             sticky sessions on the AWS ALB. -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+
+        <!-- cr-java-0065 FIX: Lettuce — non-blocking Redis client used by Spring Session
+             to communicate with Amazon ElastiCache. Recommended for Spring Boot 2.x. -->
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+        </dependency>
+
+        <!-- cr-java-0065 FIX: Spring Data Redis — required by spring-session-data-redis
+             to provide the RedisTemplate and connection factory abstractions. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
     </dependencies>
 
