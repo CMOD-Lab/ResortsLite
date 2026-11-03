@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BookingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">ResortsLite</a> &gt; <a href="index.source.html" class="el_package">com.demo.resortslite</a> &gt; <span class="el_source">BookingService.java</span></div><h1>BookingService.java</h1><pre class="source lang-java linenums">package com.demo.resortslite;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+@Service
+public class BookingService {
+
+    private final JdbcTemplate jdbcTemplate;
+
+<span class="fc" id="L17">    public BookingService(JdbcTemplate jdbcTemplate) {</span>
+<span class="fc" id="L18">        this.jdbcTemplate = jdbcTemplate;</span>
+<span class="fc" id="L19">    }</span>
+
+    private static final String DB_HOST = &quot;jdbc:h2:mem:resortdb&quot;;
+    private static final String DB_USER = &quot;sa&quot;;
+    private static final String DB_PASS = &quot;&quot;;
+    private static final String PAYMENT_API = &quot;http://localhost/payments/charge&quot;;
+
+    public Map&lt;String, Object&gt; createBooking(String guestName, String roomType,
+                                             String checkIn, String checkOut) {
+<span class="fc" id="L28">        String bookingId = &quot;BK-&quot; + UUID.randomUUID().toString().substring(0, 8).toUpperCase();</span>
+
+<span class="fc" id="L30">        String sql = &quot;INSERT INTO bookings (id, guest, room, checkin, checkout) VALUES (?, ?, ?, ?, ?)&quot;;</span>
+<span class="fc" id="L31">        jdbcTemplate.update(sql, bookingId, guestName, roomType, checkIn, checkOut);</span>
+
+<span class="fc" id="L33">        String confirmCode = sha256Hash(bookingId + guestName);</span>
+
+<span class="fc" id="L35">        Map&lt;String, Object&gt; booking = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L36">        booking.put(&quot;bookingId&quot;, bookingId);</span>
+<span class="fc" id="L37">        booking.put(&quot;guestName&quot;, guestName);</span>
+<span class="fc" id="L38">        booking.put(&quot;roomType&quot;, roomType);</span>
+<span class="fc" id="L39">        booking.put(&quot;checkIn&quot;, checkIn);</span>
+<span class="fc" id="L40">        booking.put(&quot;checkOut&quot;, checkOut);</span>
+<span class="fc" id="L41">        booking.put(&quot;confirmationCode&quot;, confirmCode);</span>
+<span class="fc" id="L42">        booking.put(&quot;dbHost&quot;, DB_HOST);</span>
+<span class="fc" id="L43">        booking.put(&quot;dbUser&quot;, DB_USER);</span>
+<span class="fc" id="L44">        booking.put(&quot;dbPass&quot;, DB_PASS);</span>
+<span class="fc" id="L45">        return booking;</span>
+    }
+
+    public Map&lt;String, Object&gt; getBookingById(String bookingId) {
+<span class="fc" id="L49">        String sql = &quot;SELECT * FROM bookings WHERE id = ?&quot;;</span>
+<span class="fc" id="L50">        Map&lt;String, Object&gt; result = new HashMap&lt;&gt;();</span>
+        try {
+<span class="fc" id="L52">            result = jdbcTemplate.queryForMap(sql, bookingId);</span>
+<span class="fc" id="L53">        } catch (Exception e) {</span>
+<span class="fc" id="L54">            result.put(&quot;error&quot;, &quot;Booking not found: &quot; + bookingId);</span>
+<span class="fc" id="L55">        }</span>
+<span class="fc" id="L56">        return result;</span>
+    }
+
+    public String calculateRoomPrice(String roomType, int nights, String season, String loyalty) {
+<span class="fc" id="L60">        double basePrice = 0;</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        if (roomType.equals(&quot;STANDARD&quot;)) { basePrice = 120.0; }</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        else if (roomType.equals(&quot;DELUXE&quot;)) { basePrice = 200.0; }</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        else if (roomType.equals(&quot;SUITE&quot;)) { basePrice = 350.0; }</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        else if (roomType.equals(&quot;VILLA&quot;)) { basePrice = 600.0; }</span>
+<span class="fc" id="L65">        else { basePrice = 120.0; }</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (season.equals(&quot;PEAK&quot;)) { basePrice = basePrice * 1.5; }</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        else if (season.equals(&quot;OFF&quot;)) { basePrice = basePrice * 0.8; }</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (loyalty.equals(&quot;GOLD&quot;)) { basePrice = basePrice * 0.9; }</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        else if (loyalty.equals(&quot;PLATINUM&quot;)) { basePrice = basePrice * 0.8; }</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        else if (loyalty.equals(&quot;DIAMOND&quot;)) { basePrice = basePrice * 0.7; }</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (nights &gt;= 14) { basePrice = basePrice * 0.90; }</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        else if (nights &gt;= 7) { basePrice = basePrice * 0.95; }</span>
+<span class="fc" id="L73">        double total = basePrice * nights;</span>
+<span class="fc" id="L74">        return String.format(&quot;%.2f&quot;, total);</span>
+    }
+
+    public boolean isRoomAvailable(String roomType) {
+<span class="pc bpc" id="L78" title="2 of 4 branches missed.">        if (!roomType.equals(&quot;STANDARD&quot;) &amp;&amp; !roomType.equals(&quot;DELUXE&quot;)</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">                &amp;&amp; !roomType.equals(&quot;SUITE&quot;) &amp;&amp; !roomType.equals(&quot;VILLA&quot;)) {</span>
+<span class="fc" id="L80">            return false;</span>
+        }
+<span class="fc" id="L82">        return true;</span>
+    }
+
+    public String generateReport(String month) {
+<span class="fc" id="L86">        return &quot;Report generation triggered for: &quot; + month + &quot; via &quot; + PAYMENT_API;</span>
+    }
+
+    private String sha256Hash(String input) {
+        try {
+<span class="fc" id="L91">            MessageDigest md = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L92">            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L93">            StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            for (byte b : hash) {</span>
+<span class="fc" id="L95">                sb.append(String.format(&quot;%02x&quot;, b));</span>
+            }
+<span class="fc" id="L97">            return sb.toString();</span>
+<span class="nc" id="L98">        } catch (Exception e) {</span>
+<span class="nc" id="L99">            return input;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
