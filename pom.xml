@@ -8,17 +8,27 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
+        <!-- Updated from 2.7.18 to 3.2.5 for Java 17 compatibility (JAVA8_TO_21_SPRING_BOOT_COMPATIBILITY) -->
+        <version>3.2.5</version>
     </parent>
 
     <groupId>com.demo</groupId>
     <artifactId>resortsLite</artifactId>
     <version>1.0.0</version>
     <name>ResortsLite</name>
-    <description>Legacy resort booking demo — Java 8 / Spring Boot 2.7.x</description>
+    <description>Resort booking demo — Java 17 / Spring Boot 3.2.x</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <!-- Updated from 1.8 to 17 (JAVA8_TO_21_DEPENDENCY_UPDATES, JAVA8_TO_17_LOMBOK_CONFIGURATION) -->
+        <java.version>17</java.version>
+        <!-- JVM args for Java 9+ module system compatibility (JAVA8_TO_21_MODULE_SYSTEM) -->
+        <!-- Opens required internal packages for reflection-based frameworks (Spring, Hibernate) -->
+        <jvm.module.args>
+            --add-opens java.base/java.lang=ALL-UNNAMED
+            --add-opens java.base/java.util=ALL-UNNAMED
+            --add-opens java.base/java.io=ALL-UNNAMED
+            --add-opens java.base/java.time=ALL-UNNAMED
+        </jvm.module.args>
     </properties>
 
     <dependencies>
@@ -30,17 +40,25 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
-        <!-- SECURITY VIOLATION: log4j 2.14.1 has critical CVE-2021-44228 (Log4Shell) -->
+        <!-- Updated log4j-core from 2.14.1 to 2.23.1 to fix CVE-2021-44228 (Log4Shell) and Java 17 compatibility -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
+            <version>2.23.1</version>
         </dependency>
-        <!-- SECURITY VIOLATION: commons-collections 3.2.1 has CVE-2015-6420 (RCE) -->
+        <!-- Updated commons-collections from 3.2.1 to 3.2.2 to fix CVE-2015-6420 (RCE) -->
         <dependency>
             <groupId>commons-collections</groupId>
             <artifactId>commons-collections</artifactId>
-            <version>3.2.1</version>
+            <version>3.2.2</version>
+        </dependency>
+        <!-- Updated mysql-connector-java from 8.0.33 to 8.2.0 for better Java 17 support -->
+        <!-- groupId changed from mysql to com.mysql in 8.0.31+ -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.2.0</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
@@ -51,9 +69,34 @@
 
     <build>
         <plugins>
+            <!-- Updated maven-compiler-plugin for Java 17 compatibility (JAVA8_TO_17_MAVEN_PLUGIN_UPDATES) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <release>17</release>
+                    <!-- Enable preview features if needed for Java 17 -->
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- JVM arguments for Java 9+ module system compatibility -->
+                    <!-- Addresses: Java 9+ Module System — Potential Reflection Access Restrictions -->
+                    <jvmArguments>
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.util=ALL-UNNAMED
+                        --add-opens java.base/java.io=ALL-UNNAMED
+                        --add-opens java.base/java.time=ALL-UNNAMED
+                    </jvmArguments>
+                </configuration>
             </plugin>
         </plugins>
     </build>

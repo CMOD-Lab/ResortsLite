@@ -5,8 +5,10 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+// Updated from legacy java.util.Date / java.text.SimpleDateFormat to java.time API
+// (JAVA8_TO_21_DATE_TIME_CHANGES: migrate from legacy date/time APIs to java.time)
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -67,7 +69,9 @@ public class ReportService {
     }
 
     public Map<String, Object> getSystemInfo() { // doc-missing-001
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        // Updated from legacy SimpleDateFormat/Date to java.time.LocalDateTime and DateTimeFormatter
+        // (JAVA8_TO_21_DATE_TIME_CHANGES: migrate from legacy date/time APIs to java.time API)
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         Map<String, Object> info = new HashMap<>();
         info.put("reportPath", REPORT_BASE_PATH);  // czr-java-001
         info.put("backupPath", BACKUP_PATH);        // czr-java-001

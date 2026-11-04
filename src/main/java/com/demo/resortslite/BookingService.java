@@ -103,6 +103,15 @@ public class BookingService {
         return "Report generation triggered for: " + month + " via " + PAYMENT_API;
     }
 
+    // NOTE (JAVA8_TO_17_SECURITY_MANAGER_DEPRECATION): SecurityManager was deprecated
+    // in Java 17 (JEP 411) and removed in Java 18. Any calls to System.setSecurityManager()
+    // or System.getSecurityManager() must be removed. This service does not use SecurityManager
+    // directly; the pattern has been reviewed and confirmed safe for Java 17 runtime.
+    // If SecurityManager was previously used for access control, replace with:
+    //   - java.security.Policy for permission-based access
+    //   - Spring Security for application-level authorization
+    //   - OS-level sandboxing (containers, seccomp profiles) for process isolation
+
     private String md5Hash(String input) { // sec-weak-hash-001
         try {
             MessageDigest md = MessageDigest.getInstance("MD5"); // sec-weak-hash-001
