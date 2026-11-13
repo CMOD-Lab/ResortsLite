@@ -2,6 +2,7 @@ package com.demo.resortslite;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.security.MessageDigest;
@@ -15,17 +16,31 @@ public class BookingService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // VIOLATION [Security Health / Critical]: Hardcoded database credentials in source code.
-    // If this repo is pushed to GitHub (even private), credentials are permanently exposed
-    // in git history. AWS Secrets Manager or Parameter Store must be used instead.
-    private static final String DB_HOST = "db-prod.resorts-internal.com"; // cr-java-0021
-    private static final String DB_USER = "admin";                         // sec-cred-001
-    private static final String DB_PASS = "Resort$Pass#2019!";             // sec-cred-001
+    // cr-java-0069 FIX: Hard-coded DB_USER and DB_PASS constants have been removed.
+    // Database credentials are now retrieved at runtime from AWS Secrets Manager
+    // via DbSecretsConfig, eliminating credential exposure in source code and
+    // container image layers, and enabling automatic credential rotation.
+    @Autowired
+    private DbSecretsConfig dbSecretsConfig;
+
+    // DB_HOST is externalised to the DB_HOST environment variable (cr-java-0021).
+    // The value stored in AWS Secrets Manager takes precedence when present.
+    @Value("${DB_HOST:db-prod.resorts-internal.com}")
+    private String dbHost;
 
     // VIOLATION cr-java-0021 [Cloud Compatibility / Mandatory]: Hardcoded infrastructure
     // hostname. Cloud IP addresses and service endpoints change on restart, redeployment,
     // or scaling events. Must be externalised to environment variables / Parameter Store.
     private static final String PAYMENT_API = "http://10.0.1.45:9090/payments/charge"; // cr-java-0021, cr-java-0088
+
+    /**
+     * Returns the effective database host: prefers the value from AWS Secrets Manager
+     * when available, otherwise falls back to the DB_HOST environment variable.
+     */
+    private String getEffectiveDbHost() {
+        String secretHost = dbSecretsConfig.getDbHost();
+        return (secretHost != null && !secretHost.isEmpty()) ? secretHost : dbHost;
+    }
 
     public Map<String, Object> createBooking(String guestName, String roomType,
                                               String checkIn, String checkOut) {
@@ -50,7 +65,7 @@ public class BookingService {
         booking.put("checkIn", checkIn);
         booking.put("checkOut", checkOut);
         booking.put("confirmationCode", confirmCode);
-        booking.put("dbHost", DB_HOST);
+        booking.put("dbHost", getEffectiveDbHost());
         return booking;
     }
 
